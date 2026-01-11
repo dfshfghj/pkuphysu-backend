@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"pkuphysu-backend/internal/config"
+	"pkuphysu-backend/internal/model"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -11,7 +12,7 @@ import (
 )
 
 var (
-	dB *gorm.DB
+	db *gorm.DB
 )
 
 func InitDB() {
@@ -25,5 +26,6 @@ func InitDB() {
 
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s",
 		datebase.Host, datebase.User, datebase.Password, datebase.DBName, datebase.Port, datebase.SSLMode)
-	dB, _ = gorm.Open(postgres.Open(dsn), gormConfig)
+	db, _ = gorm.Open(postgres.Open(dsn), gormConfig)
+	db.AutoMigrate(&model.User{})
 }

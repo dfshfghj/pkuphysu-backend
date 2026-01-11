@@ -3,14 +3,24 @@ package server
 import (
 	"pkuphysu-backend/internal/config"
 	"pkuphysu-backend/internal/db"
+	"pkuphysu-backend/server/handles"
+	"pkuphysu-backend/server/middlewares"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 func Init(e *gin.Engine) {
+	config.InitConfig()
 	db.InitDB()
-	Cors(e)
+	
+	e.POST("/user/register", handles.CreateUser)
+	e.POST("/auth/login", handles.Login)
 
+	g := e.Group("/api", middlewares.Auth())
+	g.GET("/ping",  func(c *gin.Context) {
+		c.String(200, "pong")
+	})
+	Cors(e)
 }
 
 func Cors(e *gin.Engine) {
