@@ -28,7 +28,15 @@ type User struct {
 	Salt     string `json:"-"`                                         // unique salt
 	Role     int    `json:"role"`                                      // user's role
 	Disabled bool   `json:"disabled"`
-	Bio      string `json:"bio"`                                       // user's bio
+	Bio      string `json:"bio"` // user's bio
+}
+
+func (u *User) IsGuest() bool {
+	return u.Role == GUEST
+}
+
+func (u *User) IsAdmin() bool {
+	return u.Role == ADMIN
 }
 
 func (u *User) SetPassword(pwdStaticHash string) *User {
@@ -41,8 +49,8 @@ func (u *User) SetPassword(pwdStaticHash string) *User {
 func RandomSalt(length int) (string, error) {
 	bytes := make([]byte, length/2)
 	if _, err := rand.Read(bytes); err != nil {
-        return "", err
-    }
+		return "", err
+	}
 	return hex.EncodeToString(bytes), nil
 }
 

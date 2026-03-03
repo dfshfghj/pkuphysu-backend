@@ -11,12 +11,12 @@ var (
 )
 
 type Database struct {
-	Host string `mapstructure:"HOST"`
-	Port int `mapstructure:"PORT"`
-	User string `mapstructure:"USER"`
-	Password string `mapstructure:"PASSWORD"`
-	DBName string `mapstructure:"NAME"`
-	SSLMode string `mapstructure:"SSL_MODE"`
+	Host        string `mapstructure:"HOST"`
+	Port        int    `mapstructure:"PORT"`
+	User        string `mapstructure:"USER"`
+	Password    string `mapstructure:"PASSWORD"`
+	DBName      string `mapstructure:"NAME"`
+	SSLMode     string `mapstructure:"SSL_MODE"`
 	TablePrefix string `mapstructure:"TABLE_PREFIX"`
 }
 
@@ -27,22 +27,31 @@ type Cors struct {
 }
 
 type LogConfig struct {
-	Enable bool `mapstructure:"ENABLE"`
-	Level string `mapstructure:"LEVEL"`
-	MaxSize int `mapstructure:"MAX_SIZE"`
-	MaxAge int `mapstructure:"MAX_AGE"`
-	MaxBackups int `mapstructure:"MAX_BACKUPS"`
-	Compress bool `mapstructure:"COMPRESS"`
-	FilePath string `mapstructure:"FILE_PATH"`
+	Enable     bool   `mapstructure:"ENABLE"`
+	Level      string `mapstructure:"LEVEL"`
+	MaxSize    int    `mapstructure:"MAX_SIZE"`
+	MaxAge     int    `mapstructure:"MAX_AGE"`
+	MaxBackups int    `mapstructure:"MAX_BACKUPS"`
+	Compress   bool   `mapstructure:"COMPRESS"`
+	FilePath   string `mapstructure:"FILE_PATH"`
+}
+
+type EmailConfig struct {
+	Host     string `mapstructure:"HOST"`
+	Port     int    `mapstructure:"PORT"`
+	Username string `mapstructure:"USERNAME"`
+	Password string `mapstructure:"PASSWORD"`
+	From     string `mapstructure:"FROM"`
 }
 
 type Config struct {
-	Port int `mapstructure:"PORT"`
-	JwtSecret string `mapstructure:"JWT_SECRET"`
-	TokenExpire int `mapstructure:"TOKEN_EXPIRE"`
-	Database Database
-	LogConfig LogConfig
-	Cors Cors
+	Port        int    `mapstructure:"PORT"`
+	JwtSecret   string `mapstructure:"JWT_SECRET"`
+	TokenExpire int    `mapstructure:"TOKEN_EXPIRE"`
+	Database    Database
+	LogConfig   LogConfig
+	Cors        Cors
+	Email       EmailConfig
 }
 
 func LoadConfig() (*Config, error) {
@@ -57,7 +66,7 @@ func LoadConfig() (*Config, error) {
 		}
 		return nil, fmt.Errorf("config file read error: %w", err)
 	}
-	
+
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unable to decode config: %w", err)

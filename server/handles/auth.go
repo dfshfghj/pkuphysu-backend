@@ -23,6 +23,7 @@ func Login(c *gin.Context) {
 	user, err := db.GetUserByName(req.Username)
 	if err != nil {
 		utils.RespondError(c, http.StatusUnauthorized, "invalid_credentials", err)
+		return
 	}
 
 	if err := user.ValidatePassword(req.Password); err != nil {
@@ -32,7 +33,7 @@ func Login(c *gin.Context) {
 		if err != nil {
 			utils.RespondError(c, http.StatusInternalServerError, "internal_server_error", err)
 		} else {
-			utils.RespondSuccess(c, gin.H{"token": token})
+			utils.RespondSuccess(c, gin.H{"token": token, "username": user.Username, "userid": user.ID})
 		}
 	}
 }

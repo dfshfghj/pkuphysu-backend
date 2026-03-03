@@ -3,6 +3,7 @@ package middlewares
 import (
 	"errors"
 	"pkuphysu-backend/internal/db"
+	"pkuphysu-backend/internal/model"
 	"pkuphysu-backend/internal/utils"
 	"strings"
 
@@ -31,6 +32,17 @@ func Auth() func(c *gin.Context) {
 		}
 		c.Set("CurrentUser", user)
 
+		c.Next()
+	}
+}
+
+func AuthAdmin(c *gin.Context) {
+	user := c.MustGet("CurrentUser").(*model.User)
+
+	if !user.IsAdmin() {
+		utils.RespondError(c, 403, "PermissionDenied", errors.New("You are not an admin"))
+		c.Abort()
+	} else {
 		c.Next()
 	}
 }
