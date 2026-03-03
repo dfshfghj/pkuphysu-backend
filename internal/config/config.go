@@ -45,13 +45,13 @@ type EmailConfig struct {
 }
 
 type Config struct {
-	Port        int    `mapstructure:"PORT"`
-	JwtSecret   string `mapstructure:"JWT_SECRET"`
-	TokenExpire int    `mapstructure:"TOKEN_EXPIRE"`
-	Database    Database
-	LogConfig   LogConfig
-	Cors        Cors
-	Email       EmailConfig
+	Port        int         `mapstructure:"PORT"`
+	JwtSecret   string      `mapstructure:"JWT_SECRET"`
+	TokenExpire int         `mapstructure:"TOKEN_EXPIRE"`
+	Database    Database    `mapstructure:"DATABASE"`
+	LogConfig   LogConfig   `mapstructure:"log_config"`
+	Cors        Cors        `mapstructure:"cors"`
+	Email       EmailConfig `mapstructure:"email"`
 }
 
 func LoadConfig() (*Config, error) {

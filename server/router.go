@@ -3,15 +3,21 @@ package server
 import (
 	"pkuphysu-backend/internal/config"
 	"pkuphysu-backend/internal/db"
+	"pkuphysu-backend/internal/logger"
 	"pkuphysu-backend/server/handles"
 	"pkuphysu-backend/server/middlewares"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func Init(e *gin.Engine) {
 	config.InitConfig()
+	logger.Init()
+	e.Use(gin.LoggerWithWriter(log.StandardLogger().Out))
+	e.Use(gin.RecoveryWithWriter(log.StandardLogger().Out))
 	db.InitDB()
 
 	e.POST("/user/register", handles.CreateUser)

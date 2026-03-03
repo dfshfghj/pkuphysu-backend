@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	"pkuphysu-backend/internal/config"
 	"pkuphysu-backend/internal/model"
 
@@ -26,8 +27,21 @@ func InitDB() {
 
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s",
 		datebase.Host, datebase.User, datebase.Password, datebase.DBName, datebase.Port, datebase.SSLMode)
-	db, _ = gorm.Open(postgres.Open(dsn), gormConfig)
-	CreateAll()
+
+	logrus.Info("Initializing database connection...")
+	var err error
+	db, err = gorm.Open(postgres.Open(dsn), gormConfig)
+	if err != nil {
+		logrus.WithError(err).Fatal("Failed to connect to database")
+	}
+
+	logrus.Info("Database connected successfully")
+
+	if err := CreateAll(); err != nil {
+		logrus.WithError(err).Fatal("Failed to create/migrate tables")
+	}
+
+	logrus.Info("Database tables created/migrated successfully")
 }
 
 func CreateAll() error {

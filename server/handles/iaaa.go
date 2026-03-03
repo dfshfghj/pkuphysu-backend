@@ -14,6 +14,7 @@ import (
 	"pkuphysu-backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 type IaaaLoginReq struct {
@@ -65,10 +66,13 @@ func IaaaLogin(c *gin.Context) {
 	formData.Set("smsCode", "")
 	formData.Set("otpCode", "")
 	formData.Set("remTrustChk", "false")
-	formData.Set("redirUrl", "https%3A%2F%2Fportal.pku.edu.cn%2Fportal2017%2FssoLogin.do")
+	formData.Set("redirUrl", "https://portal.pku.edu.cn/portal2017/ssoLogin.do")
+
+	log.Infof("Sending IAAA login request: %s", formData.Encode())
 
 	resp, err := client.PostForm("https://iaaa.pku.edu.cn/iaaa/oauthlogin.do", formData)
 	if err != nil {
+		log.Errorf("Failed to send IAAA login request: %v", err)
 		utils.RespondError(c, http.StatusInternalServerError, "iaaa_request_failed", err)
 		return
 	}
@@ -76,9 +80,12 @@ func IaaaLogin(c *gin.Context) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Errorf("Failed to read IAAA response body: %v", err)
 		utils.RespondError(c, http.StatusInternalServerError, "iaaa_response_read_failed", err)
 		return
 	}
+
+	log.Infof("Received IAAA response: status=%d, body=%s", resp.StatusCode, string(body))
 
 	var iaaaResp IaaaResponse
 	if err := json.Unmarshal(body, &iaaaResp); err != nil {
@@ -87,6 +94,7 @@ func IaaaLogin(c *gin.Context) {
 	}
 
 	if !iaaaResp.Success {
+		log.Warnf("IAAA login failed for user %s: %s", req.Username, iaaaResp.Msg)
 		utils.RespondError(c, http.StatusUnauthorized, "invalid_credentials", fmt.Errorf("IAAA login failed: %s", iaaaResp.Msg))
 		return
 	}
@@ -107,8 +115,10 @@ func IaaaLogin(c *gin.Context) {
 	ssoParams.Set("token", iaaaResp.Token)
 
 	ssoUrl := "https://portal.pku.edu.cn/portal2017/ssoLogin.do?" + ssoParams.Encode()
+	log.Infof("Sending SSO request to portal: %s", ssoUrl)
 	ssoResp, err := client.Get(ssoUrl)
 	if err != nil {
+		log.Errorf("Failed to send SSO request: %v", err)
 		utils.RespondError(c, http.StatusInternalServerError, "portal_sso_failed", err)
 		return
 	}
@@ -116,6 +126,7 @@ func IaaaLogin(c *gin.Context) {
 
 	isUserLoggedResp, err := client.Post("https://portal.pku.edu.cn/portal2017/isUserLogged.do", "application/x-www-form-urlencoded", nil)
 	if err != nil {
+		log.Errorf("Failed to get user info from portal: %v", err)
 		utils.RespondError(c, http.StatusInternalServerError, "portal_user_info_failed", err)
 		return
 	}
@@ -123,9 +134,12 @@ func IaaaLogin(c *gin.Context) {
 
 	userInfoBody, err := io.ReadAll(isUserLoggedResp.Body)
 	if err != nil {
+		log.Errorf("Failed to read user info response: %v", err)
 		utils.RespondError(c, http.StatusInternalServerError, "user_info_read_failed", err)
 		return
 	}
+
+	log.Infof("Received portal user info response: status=%d, body=%s", isUserLoggedResp.StatusCode, string(userInfoBody))
 
 	var portalUser PortalUserResponse
 	if err := json.Unmarshal(userInfoBody, &portalUser); err != nil {

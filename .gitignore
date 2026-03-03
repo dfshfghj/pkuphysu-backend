@@ -1,3 +1,4 @@
 /build
 data/config/config.toml
 data/static
+data/log
