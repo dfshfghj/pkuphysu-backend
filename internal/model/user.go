@@ -21,7 +21,7 @@ type User struct {
 	ID       uint   `json:"id" gorm:"primaryKey"`                      // unique key
 	Username string `json:"username" gorm:"unique" binding:"required"` // username
 	Verified bool   `json:"verified"`                                  // whether the user has been verified
-	Stuname  string `json:"stuname" gorm:"unique"`                     // student name
+	Stuname  string `json:"stuname"`                                   // student name
 	Stuid    string `json:"stuid" gorm:"unique"`                       // student id
 	PwdHash  string `json:"-"`                                         // password hash
 	PwdTS    int64  `json:"-"`                                         // password timestamp

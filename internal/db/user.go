@@ -22,6 +22,14 @@ func GetUserByName(username string) (*model.User, error) {
 	return &user, nil
 }
 
+func GetUserByStuid(stuid string) (*model.User, error) {
+	user := model.User{Stuid: stuid}
+	if err := db.Where(user).First(&user).Error; err != nil {
+		return nil, errors.Wrapf(err, "failed find user by stuid")
+	}
+	return &user, nil
+}
+
 func GetUserById(id uint) (*model.User, error) {
 	var u model.User
 	if err := db.First(&u, id).Error; err != nil {

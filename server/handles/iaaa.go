@@ -148,7 +148,7 @@ func IaaaLogin(c *gin.Context) {
 	}
 
 	var user *model.User
-	user, err = db.GetUserByName(portalUser.UserName)
+	user, err = db.GetUserByStuid(portalUser.UserId)
 	if err != nil {
 		user = &model.User{
 			Username: portalUser.UserName,
@@ -156,8 +156,6 @@ func IaaaLogin(c *gin.Context) {
 			Stuid:    portalUser.UserId,
 			Role:     model.GENERAL,
 		}
-		randomPwd, _ := utils.GenerateRandomString(16)
-		user.SetPassword(randomPwd)
 
 		if err := db.CreateUser(user); err != nil {
 			utils.RespondError(c, http.StatusInternalServerError, "user_creation_failed", err)
@@ -165,7 +163,6 @@ func IaaaLogin(c *gin.Context) {
 		}
 	} else {
 		user.Stuname = portalUser.UserName
-		user.Stuid = portalUser.UserId
 		if err := db.UpdateUser(user); err != nil {
 			utils.RespondError(c, http.StatusInternalServerError, "user_update_failed", err)
 			return
