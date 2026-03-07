@@ -35,6 +35,22 @@ func Init(e *gin.Engine) {
 		c.String(200, "pong")
 	})
 	g.GET("/user/me", handles.CurrentUser)
+	g.DELETE("/user/me", handles.DeleteUser)
+	g.PUT("/user/me", handles.UpdateUserInfo)
+	g.POST("/user/avatar", handles.UploadAvatar)
+	e.GET("/user/avatar/:id", handles.GetAvatar)
+	g.POST("/auth/change-password", handles.ChangePassword)
+
+	g.GET("/forum/posts", handles.GetPosts)
+	g.GET("/forum/posts/:id", handles.GetPost)
+	g.GET("/forum/comments/:id", handles.GetComments)
+	g.POST("/forum/comments", handles.SubmitComment)
+	g.POST("/forum/posts", handles.SubmitPost)
+	g.GET("/forum/follow", handles.GetFollowedPosts)
+	g.POST("/forum/follow/:id", handles.FollowPost)
+	g.POST("/forum/like/:id", handles.LikePost)
+	g.POST("/forum/comment/like/:id", handles.LikeComment)
+	
 	Cors(e)
 }
 

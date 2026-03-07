@@ -10,18 +10,21 @@ type ForumPost struct {
 	ID        uint `gorm:"primaryKey"`
 	Content   string
 	Reply     int
-	Likenum   int
+	Follownum int // 关注数量（原Likenum字段）
+	Likenum   int // 点赞数量（新增字段）
 	Type      int
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt `json:"-"`
 	UserID    uint
 	User      *User
 	Comments  []ForumComment `gorm:"foreignKey:PostID"`
+	Tag       string
 }
 
 type ForumComment struct {
 	ID        uint `gorm:"primaryKey"`
 	Content   string
+	Likenum   int // 评论点赞数量
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt `json:"-"`
 	PostID    uint
@@ -29,4 +32,30 @@ type ForumComment struct {
 	User      *User
 	QuoteID   *uint
 	Quote     *ForumComment `gorm:"foreignKey:QuoteID"`
+}
+
+type ForumFollow struct {
+	ID        uint `gorm:"primaryKey"`
+	UserID    uint
+	PostID    uint
+	CreatedAt time.Time
+	DeletedAt gorm.DeletedAt `json:"-"`
+}
+
+// ForumLike 表示用户对帖子的点赞关系
+type ForumLike struct {
+	ID        uint `gorm:"primaryKey"`
+	UserID    uint
+	PostID    uint
+	CreatedAt time.Time
+	DeletedAt gorm.DeletedAt `json:"-"`
+}
+
+// CommentLike 表示用户对评论的点赞关系
+type CommentLike struct {
+	ID        uint `gorm:"primaryKey"`
+	UserID    uint
+	CommentID uint
+	CreatedAt time.Time
+	DeletedAt gorm.DeletedAt `json:"-"`
 }

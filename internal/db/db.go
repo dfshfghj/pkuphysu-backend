@@ -53,6 +53,7 @@ func CreateAll() error {
 	return nil
 }
 
+// ListTables returns a map of table information
 func ListTables() (map[string]map[string]interface{}, error) {
 	tables, err := db.Migrator().GetTables()
 	if err != nil {

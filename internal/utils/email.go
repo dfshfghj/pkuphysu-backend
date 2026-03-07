@@ -11,7 +11,6 @@ import (
 )
 
 func GenerateVerificationCode() (string, error) {
-	// 生成6位数字验证码
 	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {
 		return "", errors.Wrap(err, "failed to generate verification code")
@@ -26,8 +25,6 @@ func SendVerificationEmail(toEmail, code string) error {
 	if conf.Host == "" || conf.Username == "" || conf.Password == "" {
 		return errors.New("email configuration is not set")
 	}
-
-	fmt.Printf(conf.Host, conf.From, conf.Username)
 
 	m := gomail.NewMessage()
 	m.SetHeader("From", conf.From)

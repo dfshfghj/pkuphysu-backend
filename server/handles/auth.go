@@ -6,12 +6,18 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"pkuphysu-backend/internal/db"
+	"pkuphysu-backend/internal/model"
 	"pkuphysu-backend/internal/utils"
 )
 
 type LoginReq struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password"`
+}
+
+type ChangePasswordReq struct {
+	OldPassword string `json:"oldPassword" binding:"required"`
+	NewPassword     string `json:"newPassword" binding:"required"`
 }
 
 func Login(c *gin.Context) {
@@ -36,4 +42,30 @@ func Login(c *gin.Context) {
 			utils.RespondSuccess(c, gin.H{"token": token, "username": user.Username, "userid": user.ID})
 		}
 	}
+}
+
+func ChangePassword(c *gin.Context) {
+	var req ChangePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondError(c, http.StatusBadRequest, "invalid_request", err)
+		return
+	}
+
+	user := c.MustGet("CurrentUser").(*model.User)
+	if user.PwdHash == "" && user.Salt == "" {
+	} else {
+		if err := user.ValidatePassword(req.OldPassword); err != nil {
+			utils.RespondError(c, http.StatusUnauthorized, "invalid_current_password", err)
+			return
+		}
+	}
+
+	user.SetPassword(req.NewPassword)
+	
+	if err := db.UpdateUser(user); err != nil {
+		utils.RespondError(c, http.StatusInternalServerError, "failed_to_update_password", err)
+		return
+	}
+
+	utils.RespondSuccess(c, gin.H{"message": "password_updated_successfully"})
 }
