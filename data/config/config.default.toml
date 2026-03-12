@@ -1,4 +1,4 @@
-PORT = 8081
+PORT = 8080
 JWT_SECRET = "your-jwt-secret-key"
 TOKEN_EXPIRE = 60
 
@@ -31,3 +31,8 @@ PORT = 587
 USERNAME = "your-email@example.com"
 PASSWORD = "your-email-password"
 FROM = "your-email@example.com"
+
+[rate_limit]
+REQUESTS_PER_SECOND = 10
+BURST = 20
+BLOCK_DURATION = 300

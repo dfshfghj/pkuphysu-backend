@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -44,14 +45,21 @@ type EmailConfig struct {
 	From     string `mapstructure:"FROM"`
 }
 
+type RateLimitConfig struct {
+	RequestsPerSecond int           `mapstructure:"REQUESTS_PER_SECOND"`
+	Burst             int           `mapstructure:"BURST"`
+	BlockDuration     time.Duration `mapstructure:"BLOCK_DURATION"`
+}
+
 type Config struct {
-	Port        int         `mapstructure:"PORT"`
-	JwtSecret   string      `mapstructure:"JWT_SECRET"`
-	TokenExpire int         `mapstructure:"TOKEN_EXPIRE"`
-	Database    Database    `mapstructure:"DATABASE"`
-	LogConfig   LogConfig   `mapstructure:"log_config"`
-	Cors        Cors        `mapstructure:"cors"`
-	Email       EmailConfig `mapstructure:"email"`
+	Port        int             `mapstructure:"PORT"`
+	JwtSecret   string          `mapstructure:"JWT_SECRET"`
+	TokenExpire int             `mapstructure:"TOKEN_EXPIRE"`
+	Database    Database        `mapstructure:"DATABASE"`
+	LogConfig   LogConfig       `mapstructure:"log_config"`
+	Cors        Cors            `mapstructure:"cors"`
+	Email       EmailConfig     `mapstructure:"email"`
+	RateLimit   RateLimitConfig `mapstructure:"rate_limit"`
 }
 
 func LoadConfig() (*Config, error) {
