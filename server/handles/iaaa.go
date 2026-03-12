@@ -68,8 +68,6 @@ func IaaaLogin(c *gin.Context) {
 	formData.Set("remTrustChk", "false")
 	formData.Set("redirUrl", "https://portal.pku.edu.cn/portal2017/ssoLogin.do")
 
-	log.Infof("Sending IAAA login request: %s", formData.Encode())
-
 	resp, err := client.PostForm("https://iaaa.pku.edu.cn/iaaa/oauthlogin.do", formData)
 	if err != nil {
 		log.Errorf("Failed to send IAAA login request: %v", err)
@@ -84,8 +82,6 @@ func IaaaLogin(c *gin.Context) {
 		utils.RespondError(c, http.StatusInternalServerError, "iaaa_response_read_failed", err)
 		return
 	}
-
-	log.Infof("Received IAAA response: status=%d, body=%s", resp.StatusCode, string(body))
 
 	var iaaaResp IaaaResponse
 	if err := json.Unmarshal(body, &iaaaResp); err != nil {
@@ -115,7 +111,6 @@ func IaaaLogin(c *gin.Context) {
 	ssoParams.Set("token", iaaaResp.Token)
 
 	ssoUrl := "https://portal.pku.edu.cn/portal2017/ssoLogin.do?" + ssoParams.Encode()
-	log.Infof("Sending SSO request to portal: %s", ssoUrl)
 	ssoResp, err := client.Get(ssoUrl)
 	if err != nil {
 		log.Errorf("Failed to send SSO request: %v", err)
@@ -139,8 +134,6 @@ func IaaaLogin(c *gin.Context) {
 		return
 	}
 
-	log.Infof("Received portal user info response: status=%d, body=%s", isUserLoggedResp.StatusCode, string(userInfoBody))
-
 	var portalUser PortalUserResponse
 	if err := json.Unmarshal(userInfoBody, &portalUser); err != nil {
 		utils.RespondError(c, http.StatusInternalServerError, "user_info_parse_failed", fmt.Errorf("failed to parse user info: %s", string(userInfoBody)))
@@ -155,6 +148,7 @@ func IaaaLogin(c *gin.Context) {
 			Stuname:  portalUser.UserName,
 			Stuid:    portalUser.UserId,
 			Role:     model.GENERAL,
+			Verified: true,
 		}
 
 		if err := db.CreateUser(user); err != nil {

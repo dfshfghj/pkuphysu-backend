@@ -46,7 +46,7 @@ func SaveFile(filePath string, data []byte) error {
 	if err := EnsureDirExists(dir); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-	
+
 	return os.WriteFile(filePath, data, 0644)
 }
 

@@ -17,7 +17,7 @@ type LoginReq struct {
 
 type ChangePasswordReq struct {
 	OldPassword string `json:"oldPassword" binding:"required"`
-	NewPassword     string `json:"newPassword" binding:"required"`
+	NewPassword string `json:"newPassword" binding:"required"`
 }
 
 func Login(c *gin.Context) {
@@ -61,7 +61,7 @@ func ChangePassword(c *gin.Context) {
 	}
 
 	user.SetPassword(req.NewPassword)
-	
+
 	if err := db.UpdateUser(user); err != nil {
 		utils.RespondError(c, http.StatusInternalServerError, "failed_to_update_password", err)
 		return

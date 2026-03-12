@@ -18,7 +18,7 @@ type ForumPost struct {
 	UserID    uint
 	User      *User
 	Comments  []ForumComment `gorm:"foreignKey:PostID"`
-	Tag       string
+	Tags      []ForumTag     `gorm:"many2many:forum_post_tags;"`
 }
 
 type ForumComment struct {
@@ -58,4 +58,19 @@ type CommentLike struct {
 	CommentID uint
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt `json:"-"`
+}
+
+// ForumTag 表示论坛标签
+type ForumTag struct {
+	ID        uint   `gorm:"primaryKey"`
+	Name      string `gorm:"uniqueIndex"`
+	IsDefault bool   `gorm:"default:false"` // 标识是否为系统默认标签
+	CreatedAt time.Time
+	DeletedAt gorm.DeletedAt `json:"-"`
+}
+
+// ForumPostTag 是帖子和标签的关联表
+type ForumPostTag struct {
+	PostID uint `gorm:"primaryKey"`
+	TagID  uint `gorm:"primaryKey"`
 }

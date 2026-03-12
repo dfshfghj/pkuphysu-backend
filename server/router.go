@@ -20,13 +20,17 @@ func Init(e *gin.Engine) {
 	e.Use(gin.RecoveryWithWriter(log.StandardLogger().Out))
 	db.InitDB()
 
+	e.Use(middlewares.RateLimit())
+
 	e.POST("/user/register", handles.CreateUser)
 	e.POST("/auth/login", handles.Login)
 	e.POST("/iaaa/login", handles.IaaaLogin)
 	e.POST("/email/send", handles.SendVerificationEmail)
 	e.POST("/email/verify", handles.VerifyEmail)
 
-	e.GET("/:file", handles.StaticFile)
+	e.GET("/static/*file", handles.StaticFile)
+	e.POST("/files/upload", handles.UploadFile)
+	e.GET("/files/*filename", handles.StaticFile)
 
 	e.GET("/db-tables", handles.ListTables)
 
@@ -50,7 +54,12 @@ func Init(e *gin.Engine) {
 	g.POST("/forum/follow/:id", handles.FollowPost)
 	g.POST("/forum/like/:id", handles.LikePost)
 	g.POST("/forum/comment/like/:id", handles.LikeComment)
-	
+	g.GET("/forum/tags", handles.GetTags)
+
+	admin := e.Group("/admin", middlewares.Auth(), middlewares.AuthAdmin)
+	admin.DELETE("/forum/posts/:id", handles.DeletePostByID)
+	admin.DELETE("/forum/comments/:id", handles.DeleteCommentByID)
+
 	Cors(e)
 }
 

@@ -1,30 +1,51 @@
 package db
 
 import (
+	"strings"
+
 	"pkuphysu-backend/internal/model"
 )
 
 // GetForumPostByID 根据ID获取单个帖子
 func GetForumPostByID(pid int) (*model.ForumPost, error) {
 	var post model.ForumPost
-	err := db.Preload("User").Where("id = ?", pid).First(&post).Error
+	err := db.Preload("User").Preload("Tags").Where("id = ?", pid).First(&post).Error
 	return &post, err
 }
 
 // GetForumPosts 获取帖子列表
-func GetForumPosts(cursor int, limit int, tag string, keyword string) ([]model.ForumPost, error) {
-	dbQuery := db.Preload("User")
-	
+func GetForumPosts(cursor int, limit int, tag string, keywords []string) ([]model.ForumPost, error) {
+	dbQuery := db.Preload("User").Preload("Tags")
+
 	if tag != "" {
-		dbQuery = dbQuery.Where("tag = ?", tag)
+		// 通过关联表查询包含指定tag的帖子
+		dbQuery = dbQuery.Joins("JOIN forum_post_tags ON forum_posts.id = forum_post_tags.post_id").
+			Joins("JOIN forum_tags ON forum_post_tags.tag_id = forum_tags.id").
+			Where("forum_tags.name = ?", tag)
 	}
-	if keyword != "" {
-		dbQuery = dbQuery.Where("content LIKE ?", "%"+keyword+"%")
+
+	// 处理多个 keyword，使用 OR 条件
+	if len(keywords) > 0 {
+		var keywordConditions []string
+		var keywordArgs []interface{}
+
+		for _, keyword := range keywords {
+			if keyword != "" {
+				keywordConditions = append(keywordConditions, "content LIKE ?")
+				keywordArgs = append(keywordArgs, "%"+keyword+"%")
+			}
+		}
+
+		if len(keywordConditions) > 0 {
+			condition := "(" + strings.Join(keywordConditions, " OR ") + ")"
+			dbQuery = dbQuery.Where(condition, keywordArgs...)
+		}
 	}
+
 	if cursor != 0 {
 		dbQuery = dbQuery.Where("id < ?", cursor)
 	}
-	
+
 	var posts []model.ForumPost
 	err := dbQuery.Order("id DESC").Limit(limit).Find(&posts).Error
 	return posts, err
@@ -33,13 +54,13 @@ func GetForumPosts(cursor int, limit int, tag string, keyword string) ([]model.F
 // GetForumComments 获取评论列表
 func GetForumComments(pid string, cursor int, limit int, sort string) ([]model.ForumComment, error) {
 	dbQuery := db.Preload("User").Preload("Quote").Preload("Quote.User").Where("post_id = ?", pid)
-	
+
 	if sort == "desc" {
 		dbQuery = dbQuery.Order("id DESC")
 	} else {
 		dbQuery = dbQuery.Order("id ASC")
 	}
-	
+
 	if cursor != 0 {
 		if sort == "desc" {
 			dbQuery = dbQuery.Where("id < ?", cursor)
@@ -47,7 +68,7 @@ func GetForumComments(pid string, cursor int, limit int, sort string) ([]model.F
 			dbQuery = dbQuery.Where("id > ?", cursor)
 		}
 	}
-	
+
 	var comments []model.ForumComment
 	err := dbQuery.Limit(limit).Find(&comments).Error
 	return comments, err
@@ -60,6 +81,30 @@ func CreateForumComment(comment *model.ForumComment) error {
 
 // CreateForumPost 创建帖子
 func CreateForumPost(post *model.ForumPost) error {
+	// 处理标签
+	if len(post.Tags) > 0 {
+		var finalTags []model.ForumTag
+		for _, tag := range post.Tags {
+			if tag.Name == "" {
+				continue
+			}
+
+			var existingTag model.ForumTag
+			// 查找是否已存在同名标签
+			if err := db.Where("name = ?", tag.Name).First(&existingTag).Error; err != nil {
+				// 标签不存在，创建新标签
+				newTag := model.ForumTag{Name: tag.Name}
+				if err := db.Create(&newTag).Error; err != nil {
+					return err
+				}
+				finalTags = append(finalTags, newTag)
+			} else {
+				finalTags = append(finalTags, existingTag)
+			}
+		}
+		post.Tags = finalTags
+	}
+
 	return db.Create(post).Error
 }
 
@@ -72,14 +117,14 @@ func GetForumCommentByID(commentID uint) (*model.ForumComment, error) {
 
 func GetFollowedIDs(userID uint, minID uint, maxID uint) ([]uint, error) {
 	dbQuery := db.Model(&model.ForumFollow{}).Select("post_id").Where("user_id = ?", userID)
-	
+
 	if minID > 0 {
 		dbQuery = dbQuery.Where("post_id >= ?", minID)
 	}
 	if maxID > 0 {
 		dbQuery = dbQuery.Where("post_id <= ?", maxID)
 	}
-	
+
 	var postIDs []uint
 	err := dbQuery.Pluck("post_id", &postIDs).Error
 	return postIDs, err
@@ -104,7 +149,7 @@ func GetFollowedPosts(userID uint, cursor int, limit int) ([]model.ForumPost, er
 
 	// 根据帖子ID获取完整的帖子信息
 	var posts []model.ForumPost
-	err = db.Preload("User").Where("id IN ?", postIDs).Order("id DESC").Find(&posts).Error
+	err = db.Preload("User").Preload("Tags").Where("id IN ?", postIDs).Order("id DESC").Find(&posts).Error
 	return posts, err
 }
 
@@ -150,7 +195,7 @@ func UpdateForumPostReplyNum(postID uint, replynum int) error {
 // GetForumPostsByIDs 根据ID列表获取帖子
 func GetForumPostsByIDs(postIDs []uint) ([]model.ForumPost, error) {
 	var posts []model.ForumPost
-	err := db.Preload("User").Where("id IN ?", postIDs).Order("id DESC").Find(&posts).Error
+	err := db.Preload("User").Preload("Tags").Where("id IN ?", postIDs).Order("id DESC").Find(&posts).Error
 	return posts, err
 }
 
@@ -181,14 +226,14 @@ func UnlikePost(userID, postID uint) error {
 // GetLikedIDs 获取用户点赞的帖子ID列表（在指定范围内）
 func GetLikedIDs(userID uint, minID uint, maxID uint) ([]uint, error) {
 	dbQuery := db.Model(&model.ForumLike{}).Select("post_id").Where("user_id = ?", userID)
-	
+
 	if minID > 0 {
 		dbQuery = dbQuery.Where("post_id >= ?", minID)
 	}
 	if maxID > 0 {
 		dbQuery = dbQuery.Where("post_id <= ?", maxID)
 	}
-	
+
 	var postIDs []uint
 	err := dbQuery.Pluck("post_id", &postIDs).Error
 	return postIDs, err
@@ -221,4 +266,144 @@ func UnlikeComment(userID, commentID uint) error {
 // UpdateCommentLikenum 更新评论的点赞数量
 func UpdateCommentLikenum(commentID uint, likenum int) error {
 	return db.Model(&model.ForumComment{}).Where("id = ?", commentID).Update("likenum", likenum).Error
+}
+
+// GetTags 获取所有系统默认标签列表
+func GetTags() ([]model.ForumTag, error) {
+	var tags []model.ForumTag
+	err := db.Where("is_default = ?", true).Find(&tags).Error
+	return tags, err
+}
+
+// GetPostsByTagNames 根据多个tag名称获取帖子
+func GetPostsByTagNames(tagNames []string, cursor int, limit int) ([]model.ForumPost, error) {
+	if len(tagNames) == 0 {
+		return []model.ForumPost{}, nil
+	}
+
+	dbQuery := db.Preload("User").Preload("Tags").
+		Joins("JOIN forum_post_tags ON forum_posts.id = forum_post_tags.post_id").
+		Joins("JOIN forum_tags ON forum_post_tags.tag_id = forum_tags.id").
+		Where("forum_tags.name IN ?", tagNames)
+
+	if cursor != 0 {
+		dbQuery = dbQuery.Where("forum_posts.id < ?", cursor)
+	}
+
+	var posts []model.ForumPost
+	err := dbQuery.Group("forum_posts.id").Order("forum_posts.id DESC").Limit(limit).Find(&posts).Error
+	return posts, err
+}
+
+// DeleteForumPostByID 根据ID删除帖子（管理员专用）
+func DeleteForumPostByID(postID uint) error {
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if err := tx.Error; err != nil {
+		return err
+	}
+
+	// 删除帖子的关联数据
+	// 1. 删除帖子与标签的关联
+	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumPostTag{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 2. 删除帖子的关注记录
+	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumFollow{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 3. 删除帖子的点赞记录
+	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumLike{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 4. 删除帖子的所有评论及其关联数据
+	var comments []model.ForumComment
+	if err := tx.Where("post_id = ?", postID).Find(&comments).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	for _, comment := range comments {
+		// 删除评论的点赞记录
+		if err := tx.Where("comment_id = ?", comment.ID).Delete(&model.CommentLike{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	// 删除所有评论
+	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumComment{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 5. 最后删除帖子本身
+	if err := tx.Where("id = ?", postID).Delete(&model.ForumPost{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
+}
+
+// DeleteForumCommentByID 根据ID删除评论（管理员专用）
+func DeleteForumCommentByID(commentID uint) error {
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if err := tx.Error; err != nil {
+		return err
+	}
+
+	// 1. 删除评论的点赞记录
+	if err := tx.Where("comment_id = ?", commentID).Delete(&model.CommentLike{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 2. 删除评论本身
+	if err := tx.Where("id = ?", commentID).Delete(&model.ForumComment{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 3. 更新帖子的回复计数
+	var comment model.ForumComment
+	if err := tx.Where("id = ?", commentID).First(&comment).Error; err != nil {
+		// 如果评论不存在，直接返回成功
+		tx.Rollback()
+		return nil
+	}
+
+	postID := comment.PostID
+	var post model.ForumPost
+	if err := tx.Where("id = ?", postID).First(&post).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if post.Reply > 0 {
+		post.Reply--
+		if err := tx.Model(&post).Update("reply", post.Reply).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit().Error
 }

@@ -2,6 +2,7 @@ package handles
 
 import (
 	"strconv"
+	"strings"
 
 	"pkuphysu-backend/internal/db"
 	"pkuphysu-backend/internal/model"
@@ -26,15 +27,21 @@ func GetPost(c *gin.Context) {
 	userID := c.MustGet("CurrentUser").(*model.User).ID
 
 	isFollow := 0
-	followed, err := db.GetUserFollowStatus(userID, uint(pid))
+	followed, err := db.GetUserFollowStatus(userID, post.ID)
 	if err == nil && followed {
 		isFollow = 1
 	}
 
 	isLike := 0
-	liked, err := db.GetUserLikeStatus(userID, uint(pid))
+	liked, err := db.GetUserLikeStatus(userID, post.ID)
 	if err == nil && liked {
 		isLike = 1
+	}
+
+	// 提取tag名称列表
+	tags := make([]string, len(post.Tags))
+	for i, tag := range post.Tags {
+		tags[i] = tag.Name
 	}
 
 	postData := map[string]interface{}{
@@ -44,7 +51,7 @@ func GetPost(c *gin.Context) {
 		"follownum": post.Follownum,
 		"likenum":   post.Likenum,
 		"reply":     post.Reply,
-		"tag":       post.Tag,
+		"tags":      tags,
 		"is_follow": isFollow,
 		"is_like":   isLike,
 		"userid":    post.User.ID,
@@ -68,18 +75,33 @@ func GetPosts(c *gin.Context) {
 	}
 
 	tag := c.DefaultQuery("tag", "")
-	keyword := c.DefaultQuery("keyword", "")
+
+	// 支持多个 keyword 参数，使用重复参数格式: keyword=word1&keyword=word2&keyword=word3
+	var keywords []string
+	if c.Request.URL.Query().Has("keyword") {
+		keywords = c.QueryArray("keyword")
+		// 清理空字符串和多余空格
+		for i := len(keywords) - 1; i >= 0; i-- {
+			keywords[i] = strings.TrimSpace(keywords[i])
+			if keywords[i] == "" {
+				keywords = append(keywords[:i], keywords[i+1:]...)
+			}
+		}
+	}
 
 	var posts []model.ForumPost
 
-	posts, err = db.GetForumPosts(cursor, limit, tag, keyword)
+	posts, err = db.GetForumPosts(cursor, limit, tag, keywords)
 	if err != nil {
 		utils.RespondError(c, 500, "ServerError", err)
 		return
 	}
 
 	userID := c.MustGet("CurrentUser").(*model.User).ID
-
+	if len(posts) == 0 {
+		utils.RespondSuccess(c, []map[string]interface{}{})
+		return
+	}
 	minID := posts[len(posts)-1].ID
 	maxID := posts[0].ID
 
@@ -111,6 +133,12 @@ func GetPosts(c *gin.Context) {
 			isLike = 1
 		}
 
+		// 提取tag名称列表
+		tags := make([]string, len(post.Tags))
+		for j, tag := range post.Tags {
+			tags[j] = tag.Name
+		}
+
 		postData[i] = map[string]interface{}{
 			"id":        post.ID,
 			"text":      post.Content,
@@ -119,7 +147,7 @@ func GetPosts(c *gin.Context) {
 			"follownum": post.Follownum,
 			"likenum":   post.Likenum,
 			"reply":     post.Reply,
-			"tag":       post.Tag,
+			"tags":      tags,
 			"is_follow": isFollow,
 			"is_like":   isLike,
 			"userid":    post.User.ID,
@@ -193,7 +221,7 @@ func GetComments(c *gin.Context) {
 
 func SubmitComment(c *gin.Context) {
 	var req struct {
-		Pid   uint `json:"pid"`
+		Pid   uint   `json:"pid"`
 		Text  string `json:"text"`
 		Quote *uint  `json:"quote"`
 	}
@@ -242,8 +270,8 @@ func SubmitComment(c *gin.Context) {
 
 func SubmitPost(c *gin.Context) {
 	var req struct {
-		Text string `json:"text"`
-		Tag  string `json:"tag"`
+		Text string   `json:"text"`
+		Tags []string `json:"tags"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -253,10 +281,18 @@ func SubmitPost(c *gin.Context) {
 
 	currentUser := c.MustGet("CurrentUser").(*model.User)
 
+	// 构建tag列表
+	var tags []model.ForumTag
+	for _, tagName := range req.Tags {
+		if tagName != "" { // 忽略空tag
+			tags = append(tags, model.ForumTag{Name: tagName})
+		}
+	}
+
 	post := model.ForumPost{
 		Content: req.Text,
 		UserID:  currentUser.ID,
-		Tag:     req.Tag,
+		Tags:    tags,
 	}
 
 	err := db.CreateForumPost(&post)
@@ -297,7 +333,13 @@ func GetFollowedPosts(c *gin.Context) {
 
 	postData := make([]map[string]interface{}, len(posts))
 	for i, post := range posts {
-			postData[i] = map[string]interface{}{
+		// 提取tag名称列表
+		tags := make([]string, len(post.Tags))
+		for j, tag := range post.Tags {
+			tags[j] = tag.Name
+		}
+
+		postData[i] = map[string]interface{}{
 			"id":        post.ID,
 			"text":      post.Content,
 			"type":      post.Type,
@@ -305,7 +347,7 @@ func GetFollowedPosts(c *gin.Context) {
 			"follownum": post.Follownum,
 			"likenum":   post.Likenum,
 			"reply":     post.Reply,
-			"tag":       post.Tag,
+			"tags":      tags,
 			"is_follow": 1,
 			"userid":    post.User.ID,
 			"username":  post.User.Username,
@@ -340,7 +382,7 @@ func FollowPost(c *gin.Context) {
 			utils.RespondError(c, 500, "ServerError", err)
 			return
 		}
-		
+
 		// 获取当前帖子的 Follownum 并加1
 		post, err := db.GetForumPostByID(int(postID))
 		if err != nil {
@@ -353,7 +395,7 @@ func FollowPost(c *gin.Context) {
 			utils.RespondError(c, 500, "ServerError", err)
 			return
 		}
-		
+
 		utils.RespondSuccess(c, gin.H{"message": "关注成功"})
 	} else {
 		// 已关注，删除关注记录
@@ -362,7 +404,7 @@ func FollowPost(c *gin.Context) {
 			utils.RespondError(c, 500, "ServerError", err)
 			return
 		}
-		
+
 		// 获取当前帖子的 Follownum 并减1（确保不小于0）
 		post, err := db.GetForumPostByID(int(postID))
 		if err != nil {
@@ -377,7 +419,7 @@ func FollowPost(c *gin.Context) {
 			utils.RespondError(c, 500, "ServerError", err)
 			return
 		}
-		
+
 		utils.RespondSuccess(c, gin.H{"message": "取消关注成功"})
 	}
 }
@@ -450,9 +492,9 @@ func LikePost(c *gin.Context) {
 	}
 
 	utils.RespondSuccess(c, gin.H{
-		"message":   message,
-		"likenum":   newLikenum,
-		"is_liked":  !isLiked,
+		"message":  message,
+		"likenum":  newLikenum,
+		"is_liked": !isLiked,
 	})
 }
 
@@ -524,8 +566,72 @@ func LikeComment(c *gin.Context) {
 	}
 
 	utils.RespondSuccess(c, gin.H{
-		"message":   message,
-		"likenum":   newLikenum,
-		"is_liked":  !isLiked,
+		"message":  message,
+		"likenum":  newLikenum,
+		"is_liked": !isLiked,
 	})
+}
+
+// GetTags 获取所有可用的标签列表
+func GetTags(c *gin.Context) {
+	tags, err := db.GetTags()
+	if err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	type TagInfo struct {
+		ID        uint   `json:"id"`
+		TagName   string `json:"tag_name"`
+		IsDefault bool   `json:"is_default"`
+	}
+
+	tagInfos := make([]TagInfo, len(tags))
+	for i, tag := range tags {
+		tagInfos[i] = TagInfo{
+			ID:        tag.ID,
+			TagName:   tag.Name,
+			IsDefault: tag.IsDefault,
+		}
+	}
+
+	utils.RespondSuccess(c, tagInfos)
+}
+
+// DeletePostByID 管理员按ID删除帖子
+func DeletePostByID(c *gin.Context) {
+	id := c.Param("id")
+
+	postID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidID", err)
+		return
+	}
+
+	err = db.DeleteForumPostByID(uint(postID))
+	if err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	utils.RespondSuccess(c, gin.H{"message": "帖子删除成功"})
+}
+
+// DeleteCommentByID 管理员按ID删除评论
+func DeleteCommentByID(c *gin.Context) {
+	id := c.Param("id")
+
+	commentID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidID", err)
+		return
+	}
+
+	err = db.DeleteForumCommentByID(uint(commentID))
+	if err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	utils.RespondSuccess(c, gin.H{"message": "评论删除成功"})
 }

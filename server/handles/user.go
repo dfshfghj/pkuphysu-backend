@@ -33,7 +33,18 @@ func CreateUser(c *gin.Context) {
 
 func CurrentUser(c *gin.Context) {
 	user := c.MustGet("CurrentUser").(*model.User)
-	utils.RespondSuccess(c, user)
+
+	type CurrentUserResponse struct {
+		model.User  `json:",inline"`
+		HasPassword bool `json:"has_password"`
+	}
+
+	response := CurrentUserResponse{
+		User:        *user,
+		HasPassword: user.PwdHash != "",
+	}
+
+	utils.RespondSuccess(c, response)
 }
 
 func DeleteUser(c *gin.Context) {
@@ -62,7 +73,7 @@ func UpdateUserInfo(c *gin.Context) {
 
 	if req.Username != "" && req.Username != currentUser.Username {
 		_, err := db.GetUserByName(req.Username)
-		if err == nil  {
+		if err == nil {
 			utils.RespondError(c, 409, "username_already_exists", nil)
 			return
 		}
@@ -106,15 +117,13 @@ func UploadAvatar(c *gin.Context) {
 
 	currentUser := c.MustGet("CurrentUser").(*model.User)
 
-	ext := filepath.Ext(file.Filename)
-
 	avatarDir := "./data/avatar"
 	if err := utils.EnsureDirExists(avatarDir); err != nil {
 		utils.RespondError(c, 500, "failed_to_create_avatar_dir", err)
 		return
 	}
 
-	filePath := filepath.Join(avatarDir, fmt.Sprintf("%d%s", currentUser.ID, ext))
+	filePath := filepath.Join(avatarDir, fmt.Sprintf("%d", currentUser.ID))
 
 	src, err := file.Open()
 	if err != nil {
@@ -142,33 +151,19 @@ func UploadAvatar(c *gin.Context) {
 func GetAvatar(c *gin.Context) {
 	userID := c.Param("id")
 
-	id, err := strconv.ParseUint(userID, 10, 32)
+	_, err := strconv.ParseUint(userID, 10, 32)
 	if err != nil {
 		utils.RespondError(c, 400, "invalid_user_id", errors.New("user ID must be a valid number"))
 		return
 	}
 
 	avatarDir := "./data/avatar"
-	if _, err := os.Stat(avatarDir); os.IsNotExist(err) {
+	filePath := filepath.Join(avatarDir, userID)
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		utils.RespondError(c, 404, "avatar_not_found", errors.New("avatar not found"))
 		return
 	}
 
-	validExtensions := []string{".jpg", ".jpeg", ".png", ".gif", ".webp"}
-	var foundFile string
-	
-	for _, ext := range validExtensions {
-		filePath := filepath.Join(avatarDir, fmt.Sprintf("%d%s", id, ext))
-		if _, err := os.Stat(filePath); err == nil {
-			foundFile = filePath
-			break
-		}
-	}
-
-	if foundFile == "" {
-		utils.RespondError(c, 404, "avatar_not_found", errors.New("avatar not found"))
-		return
-	}
-
-	c.File(foundFile)
+	c.File(filePath)
 }
