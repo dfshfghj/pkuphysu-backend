@@ -24,7 +24,7 @@ func Auth() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
-		user, err := db.GetUserByName(userClaims.Username)
+		user, err := db.GetUserById(userClaims.UserID)
 		if err != nil {
 			utils.RespondError(c, 401, "invalid token", err)
 			c.Abort()

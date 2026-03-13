@@ -10,15 +10,15 @@ import (
 )
 
 type UserClaims struct {
-	Username string `json:"username"`
-	PwdTS    int64  `json:"pwd_ts"`
+	UserID uint  `json:"user_id"`
+	PwdTS  int64 `json:"pwd_ts"`
 	jwt.RegisteredClaims
 }
 
 func GenerateToken(user *model.User) (tokenString string, err error) {
 	claims := UserClaims{
-		Username: user.Username,
-		PwdTS:    user.PwdTS,
+		UserID: user.ID,
+		PwdTS:  user.PwdTS,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(config.Conf.TokenExpire) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
