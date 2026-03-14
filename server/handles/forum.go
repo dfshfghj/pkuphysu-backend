@@ -38,7 +38,6 @@ func GetPost(c *gin.Context) {
 		isLike = 1
 	}
 
-	// 提取tag名称列表
 	tags := make([]string, len(post.Tags))
 	for i, tag := range post.Tags {
 		tags[i] = tag.Name
@@ -74,13 +73,20 @@ func GetPosts(c *gin.Context) {
 		return
 	}
 
-	tag := c.DefaultQuery("tag", "")
+	var tags []string
+	if c.Request.URL.Query().Has("tag") {
+		tags = c.QueryArray("tag")
+		for i := len(tags) - 1; i >= 0; i-- {
+			tags[i] = strings.TrimSpace(tags[i])
+			if tags[i] == "" {
+				tags = append(tags[:i], tags[i+1:]...)
+			}
+		}
+	}
 
-	// 支持多个 keyword 参数，使用重复参数格式: keyword=word1&keyword=word2&keyword=word3
 	var keywords []string
 	if c.Request.URL.Query().Has("keyword") {
 		keywords = c.QueryArray("keyword")
-		// 清理空字符串和多余空格
 		for i := len(keywords) - 1; i >= 0; i-- {
 			keywords[i] = strings.TrimSpace(keywords[i])
 			if keywords[i] == "" {
@@ -91,7 +97,7 @@ func GetPosts(c *gin.Context) {
 
 	var posts []model.ForumPost
 
-	posts, err = db.GetForumPosts(cursor, limit, tag, keywords)
+	posts, err = db.GetForumPosts(cursor, limit, tags, keywords)
 	if err != nil {
 		utils.RespondError(c, 500, "ServerError", err)
 		return
@@ -133,7 +139,6 @@ func GetPosts(c *gin.Context) {
 			isLike = 1
 		}
 
-		// 提取tag名称列表
 		tags := make([]string, len(post.Tags))
 		for j, tag := range post.Tags {
 			tags[j] = tag.Name

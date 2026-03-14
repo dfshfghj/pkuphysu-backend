@@ -15,14 +15,26 @@ func GetForumPostByID(pid int) (*model.ForumPost, error) {
 }
 
 // GetForumPosts 获取帖子列表
-func GetForumPosts(cursor int, limit int, tag string, keywords []string) ([]model.ForumPost, error) {
+func GetForumPosts(cursor int, limit int, tags []string, keywords []string) ([]model.ForumPost, error) {
 	dbQuery := db.Preload("User").Preload("Tags")
 
-	if tag != "" {
-		// 通过关联表查询包含指定tag的帖子
-		dbQuery = dbQuery.Joins("JOIN forum_post_tags ON forum_posts.id = forum_post_tags.post_id").
-			Joins("JOIN forum_tags ON forum_post_tags.tag_id = forum_tags.id").
-			Where("forum_tags.name = ?", tag)
+	if len(tags) > 0 {
+		// 处理多个 tag，使用 OR 条件
+		var tagConditions []string
+		var tagArgs []interface{}
+
+		for _, tag := range tags {
+			if tag != "" {
+				tagConditions = append(tagConditions, "pkuphysu_forum_tags.name = ?")
+				tagArgs = append(tagArgs, tag)
+			}
+		}
+
+		if len(tagConditions) > 0 {
+			dbQuery = dbQuery.Joins("JOIN pkuphysu_forum_post_tags ON pkuphysu_forum_posts.id = pkuphysu_forum_post_tags.forum_post_id").
+				Joins("JOIN pkuphysu_forum_tags ON pkuphysu_forum_post_tags.forum_tag_id = pkuphysu_forum_tags.id").
+				Where("(" + strings.Join(tagConditions, " OR ") + ")", tagArgs...)
+		}
 	}
 
 	// 处理多个 keyword，使用 OR 条件
