@@ -5,6 +5,7 @@ import (
 	"pkuphysu-backend/internal/db"
 	"pkuphysu-backend/internal/model"
 	"pkuphysu-backend/internal/utils"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,26 @@ type VerifyEmailRequest struct {
 }
 
 func isValidPkuStudentEmail(email string) bool {
-	return strings.HasSuffix(email, "@stu.pku.edu.cn")
+	if !strings.HasSuffix(email, "@stu.pku.edu.cn") {
+		return false
+	}
+
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+
+	stuid := parts[0]
+	if stuid == "" {
+		return false
+	}
+
+	matched, err := regexp.MatchString(`^\d+$`, stuid)
+	if err != nil {
+		return false
+	}
+
+	return matched
 }
 
 func extractStuidFromEmail(email string) string {
@@ -36,7 +56,7 @@ func SendVerificationEmail(c *gin.Context) {
 
 	// 验证邮箱是否为北大邮箱
 	if !isValidPkuStudentEmail(req.Email) {
-		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be @stu.pku.edu.cn domain"))
+		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be @stu.pku.edu.cn domain with numeric student ID"))
 		return
 	}
 
@@ -67,7 +87,7 @@ func VerifyEmail(c *gin.Context) {
 	}
 
 	if !isValidPkuStudentEmail(req.Email) {
-		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be @stu.pku.edu.cn domain"))
+		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be @stu.pku.edu.cn domain with numeric student ID"))
 		return
 	}
 
