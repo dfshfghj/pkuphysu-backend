@@ -5,6 +5,7 @@ import (
 
 	"github.com/88250/lute"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/microcosm-cc/bluemonday"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -12,6 +13,10 @@ import (
 func MarkdownToHtml(markdown string) string {
 	luteEngine := lute.New()
 	html := luteEngine.MarkdownStr("", markdown)
+	p := bluemonday.UGCPolicy()
+	p.AllowElements("iframe")
+	p.AllowAttrs("src", "href", "style", "class", "id").Globally()
+	html = p.Sanitize(html)
 	log.Debug("markdown: ", markdown)
 	log.Debug("html: ", html)
 
