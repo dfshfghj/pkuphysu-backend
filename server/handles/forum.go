@@ -46,7 +46,7 @@ func GetPost(c *gin.Context) {
 
 	postData := map[string]interface{}{
 		"id":        post.ID,
-		"text":      post.Content,
+		"text":      post.ContentHTML,
 		"timestamp": post.CreatedAt.Unix(),
 		"follownum": post.Follownum,
 		"likenum":   post.Likenum,
@@ -141,7 +141,7 @@ func GetPosts(c *gin.Context) {
 
 		postData[i] = map[string]interface{}{
 			"id":        post.ID,
-			"text":      post.Content,
+			"text":      post.ContentHTML,
 			"type":      post.Type,
 			"timestamp": post.CreatedAt.Unix(),
 			"follownum": post.Follownum,
@@ -190,7 +190,7 @@ func GetComments(c *gin.Context) {
 			quoteInfo = gin.H{
 				"cid":      comment.Quote.ID,
 				"username": comment.Quote.User.Username,
-				"text":     comment.Quote.Content,
+				"text":     comment.Quote.ContentHTML,
 			}
 		} else {
 			quoteInfo = nil
@@ -206,7 +206,7 @@ func GetComments(c *gin.Context) {
 		commentData[i] = map[string]interface{}{
 			"cid":       comment.ID,
 			"pid":       comment.PostID,
-			"text":      comment.Content,
+			"text":      comment.ContentHTML,
 			"quote":     quoteInfo,
 			"timestamp": comment.CreatedAt.Unix(),
 			"userid":    comment.User.ID,
@@ -341,7 +341,7 @@ func GetFollowedPosts(c *gin.Context) {
 
 		postData[i] = map[string]interface{}{
 			"id":        post.ID,
-			"text":      post.Content,
+			"text":      post.ContentHTML,
 			"type":      post.Type,
 			"timestamp": post.CreatedAt.Unix(),
 			"follownum": post.Follownum,
@@ -634,4 +634,52 @@ func DeleteCommentByID(c *gin.Context) {
 	}
 
 	utils.RespondSuccess(c, gin.H{"message": "评论删除成功"})
+}
+
+func GetRawPost(c *gin.Context) {
+	pid, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+
+	post, err := db.GetForumPostByID(pid)
+	if err != nil {
+		utils.RespondError(c, 404, "NotFound", err)
+		return
+	}
+
+	rawData := map[string]interface{}{
+		"id":        post.ID,
+		"content":   post.Content,
+		"timestamp": post.CreatedAt.Unix(),
+		"userid":    post.User.ID,
+		"username":  post.User.Username,
+	}
+
+	utils.RespondSuccess(c, rawData)
+}
+
+func GetRawComment(c *gin.Context) {
+	cid, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+
+	comment, err := db.GetForumCommentByID(uint(cid))
+	if err != nil {
+		utils.RespondError(c, 404, "NotFound", err)
+		return
+	}
+
+	rawData := map[string]interface{}{
+		"cid":       comment.ID,
+		"content":   comment.Content,
+		"timestamp": comment.CreatedAt.Unix(),
+		"userid":    comment.User.ID,
+		"username":  comment.User.Username,
+	}
+
+	utils.RespondSuccess(c, rawData)
 }

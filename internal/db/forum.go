@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"pkuphysu-backend/internal/model"
+	"pkuphysu-backend/internal/utils"
 )
 
 // GetForumPostByID 根据ID获取单个帖子
@@ -31,7 +32,7 @@ func GetForumPosts(cursor int, limit int, tag string, keywords []string) ([]mode
 
 		for _, keyword := range keywords {
 			if keyword != "" {
-				keywordConditions = append(keywordConditions, "content LIKE ?")
+				keywordConditions = append(keywordConditions, "content_text ILIKE ?")
 				keywordArgs = append(keywordArgs, "%"+keyword+"%")
 			}
 		}
@@ -76,11 +77,16 @@ func GetForumComments(pid string, cursor int, limit int, sort string) ([]model.F
 
 // CreateForumComment 创建评论
 func CreateForumComment(comment *model.ForumComment) error {
+	comment.ContentHTML = utils.MarkdownToHtml(comment.Content)
+	comment.ContentText = utils.MarkdownToText(comment.Content)
 	return db.Create(comment).Error
 }
 
 // CreateForumPost 创建帖子
 func CreateForumPost(post *model.ForumPost) error {
+	post.ContentHTML = utils.MarkdownToHtml(post.Content)
+	post.ContentText = utils.MarkdownToText(post.Content)
+
 	// 处理标签
 	if len(post.Tags) > 0 {
 		var finalTags []model.ForumTag

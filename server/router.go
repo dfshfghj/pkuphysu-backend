@@ -55,6 +55,9 @@ func Init(e *gin.Engine) {
 	g.POST("/forum/like/:id", handles.LikePost)
 	g.POST("/forum/comment/like/:id", handles.LikeComment)
 	g.GET("/forum/tags", handles.GetTags)
+	g.POST("/markdown/preview", handles.Markdown)
+	g.GET("/forum/posts/raw/:id", handles.GetRawPost)
+	g.GET("/forum/comments/raw/:id", handles.GetRawComment)
 
 	admin := e.Group("/admin", middlewares.Auth(), middlewares.AuthAdmin)
 	admin.DELETE("/forum/posts/:id", handles.DeletePostByID)
