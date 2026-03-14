@@ -61,7 +61,7 @@ func DeleteUser(c *gin.Context) {
 
 func UpdateUserInfo(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"omitempty,min=1,max=50"`
+		Username string `json:"username" binding:"omitempty,alphanumunicode,min=1,max=50"`
 		Bio      string `json:"bio" binding:"omitempty,max=200"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -18,15 +18,15 @@ const (
 )
 
 type User struct {
-	ID       uint   `json:"id" gorm:"primaryKey"`                      // unique key
-	Username string `json:"username" gorm:"unique" binding:"required"` // username
-	Verified bool   `json:"verified"`                                  // whether the user has been verified
-	Stuname  string `json:"stuname"`                                   // student name
-	Stuid    string `json:"stuid" gorm:"unique"`                       // student id
-	PwdHash  string `json:"-"`                                         // password hash
-	PwdTS    int64  `json:"-"`                                         // password timestamp
-	Salt     string `json:"-"`                                         // unique salt
-	Role     int    `json:"role"`                                      // user's role
+	ID       uint   `json:"id" gorm:"primaryKey"`                                                   // unique key
+	Username string `json:"username" gorm:"unique" binding:"required,alphanumunicode,min=1,max=50"` // username
+	Verified bool   `json:"verified"`                                                               // whether the user has been verified
+	Stuname  string `json:"stuname"`                                                                // student name
+	Stuid    string `json:"stuid" gorm:"unique"`                                                    // student id
+	PwdHash  string `json:"-"`                                                                      // password hash
+	PwdTS    int64  `json:"-"`                                                                      // password timestamp
+	Salt     string `json:"-"`                                                                      // unique salt
+	Role     int    `json:"role"`                                                                   // user's role
 	Disabled bool   `json:"disabled"`
 	Bio      string `json:"bio"` // user's bio
 }
