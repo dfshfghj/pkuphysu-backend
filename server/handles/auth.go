@@ -1,7 +1,9 @@
 package handles
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -11,7 +13,7 @@ import (
 )
 
 type LoginReq struct {
-	Username string `json:"username" binding:"required,alphanumunicode,min=1,max=50"`
+	Username string `json:"username" binding:"required,min=1,max=50"`
 	Password string `json:"password"`
 }
 
@@ -26,7 +28,23 @@ func Login(c *gin.Context) {
 		utils.RespondError(c, http.StatusBadRequest, "invalid_request", err)
 		return
 	}
-	user, err := db.GetUserByName(req.Username)
+
+	var user *model.User
+	var err error
+
+	if strings.Contains(req.Username, "@") {
+		if !isValidPkuStudentEmail(req.Username) {
+			utils.RespondError(c, http.StatusBadRequest, "invalid_email_format",
+				fmt.Errorf("邮箱必须是@stu.pku.edu.cn域名，且前缀必须是学号"))
+			return
+		}
+
+		stuid := extractStuidFromEmail(req.Username)
+		user, err = db.GetUserByStuid(stuid)
+	} else {
+		user, err = db.GetUserByName(req.Username)
+	}
+
 	if err != nil {
 		utils.RespondError(c, http.StatusUnauthorized, "invalid_credentials", err)
 		return
