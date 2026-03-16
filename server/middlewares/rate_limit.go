@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -10,43 +11,73 @@ import (
 	"pkuphysu-backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 )
 
-type rateLimiter struct {
+type ipLimiter struct {
+	limiter    *rate.Limiter
 	lastAccess time.Time
-	count      int
-	blocked    bool
 	blockEnd   time.Time
 }
 
 var (
-	ipLimiters = make(map[string]*rateLimiter)
-	mutex      = sync.RWMutex{}
+	ipLimiters        = make(map[string]*ipLimiter)
+	mutex             = sync.RWMutex{}
+	trustedProxyCheck = true // 是否检查可信代理
 )
 
 func getClientIP(c *gin.Context) string {
+	if trustedProxyCheck {
+		hasProxyHeaders := c.GetHeader("X-Forwarded-For") != "" ||
+			c.GetHeader("X-Real-IP") != "" ||
+			c.GetHeader("Via") != ""
+
+		if !hasProxyHeaders {
+			return c.ClientIP()
+		}
+	}
+
 	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
 		ips := strings.Split(xff, ",")
 		if len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
+			ip := strings.TrimSpace(ips[0])
+			if isValidIP(ip) {
+				return ip
+			}
 		}
 	}
 
 	if xri := c.GetHeader("X-Real-IP"); xri != "" {
-		return xri
+		ip := strings.TrimSpace(xri)
+		if isValidIP(ip) {
+			return ip
+		}
 	}
 
 	return c.ClientIP()
 }
 
-// cleanupExpired 清理过期的IP记录（简单实现，实际生产环境可能需要更高效的方案）
+func isValidIP(ip string) bool {
+	if ip == "" {
+		return false
+	}
+	parts := strings.Split(ip, ".")
+	if len(parts) == 4 {
+		return true
+	}
+	if strings.Contains(ip, ":") {
+		return true
+	}
+	return false
+}
+
 func cleanupExpired() {
 	mutex.Lock()
 	defer mutex.Unlock()
 
 	now := time.Now()
 	for ip, limiter := range ipLimiters {
-		if !limiter.blocked && now.Sub(limiter.lastAccess) > time.Hour {
+		if limiter.blockEnd.Before(now) && now.Sub(limiter.lastAccess) > time.Hour {
 			delete(ipLimiters, ip)
 		}
 	}
@@ -69,55 +100,43 @@ func RateLimit() func(c *gin.Context) {
 		blockDuration = cfg.RateLimit.BlockDuration
 	}
 
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		for range ticker.C {
+			cleanupExpired()
+		}
+	}()
+
 	return func(c *gin.Context) {
 		ip := getClientIP(c)
 
 		mutex.Lock()
 		limiter, exists := ipLimiters[ip]
 		if !exists {
-			limiter = &rateLimiter{
+			limiter = &ipLimiter{
+				limiter:    rate.NewLimiter(rate.Limit(requestsPerSecond), burst),
 				lastAccess: time.Now(),
-				count:      0,
 			}
 			ipLimiters[ip] = limiter
 		}
-
-		now := time.Now()
-
-		if limiter.blocked && now.Before(limiter.blockEnd) {
-			mutex.Unlock()
-			utils.RespondError(c, http.StatusTooManyRequests, "Too Many Requests", nil)
-			c.Abort()
-			return
-		}
-
-		if limiter.blocked && now.After(limiter.blockEnd) {
-			limiter.blocked = false
-			limiter.count = 0
-		}
-
-		window := time.Duration(1000000000/requestsPerSecond) * time.Nanosecond
-		if now.Sub(limiter.lastAccess) > window {
-			limiter.count = 1
-		} else {
-			limiter.count++
-		}
-
-		limiter.lastAccess = now
-
-		if limiter.count > burst {
-			limiter.blocked = true
-			limiter.blockEnd = now.Add(blockDuration)
-			mutex.Unlock()
-			utils.RespondError(c, http.StatusTooManyRequests, "Too Many Requests", nil)
-			c.Abort()
-			return
-		}
-
+		limiter.lastAccess = time.Now()
 		mutex.Unlock()
 
-		if len(ipLimiters)%1000 == 0 {
-			cleanupExpired()
+		if !limiter.blockEnd.IsZero() && time.Now().Before(limiter.blockEnd) {
+			utils.RespondError(c, http.StatusTooManyRequests, "Too Many Requests", fmt.Errorf("rate limit exceeded"))
+			c.Abort()
+			return
+		}
+
+		if !limiter.blockEnd.IsZero() && time.Now().After(limiter.blockEnd) {
+			limiter.blockEnd = time.Time{}
+		}
+
+		if !limiter.limiter.Allow() {
+			limiter.blockEnd = time.Now().Add(blockDuration)
+			utils.RespondError(c, http.StatusTooManyRequests, "Too Many Requests", fmt.Errorf("rate limit exceeded"))
+			c.Abort()
+			return
 		}
 
 		c.Next()
