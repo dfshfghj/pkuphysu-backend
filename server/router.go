@@ -22,7 +22,6 @@ func Init(e *gin.Engine) {
 
 	e.Use(middlewares.RateLimit())
 
-	e.POST("/user/register", handles.CreateUser)
 	e.POST("/auth/login", handles.Login)
 	e.POST("/iaaa/login", handles.IaaaLogin)
 	e.POST("/email/send", handles.SendVerificationEmail)
@@ -32,18 +31,30 @@ func Init(e *gin.Engine) {
 	e.POST("/files/upload", handles.UploadFile)
 	e.GET("/files/*filename", handles.StaticFile)
 
-	e.GET("/db-tables", handles.ListTables)
+	dba := e.Group("/dba", middlewares.Auth(), middlewares.AuthAdmin())
+	dba.POST("/db-tables/create-all", handles.CreateAll)
+	dba.GET("/db-tables", handles.ListTables)
+	dba.GET("/db-tables/:table", handles.GetTableData)
+	dba.DELETE("/db-tables/:table", handles.DeleteTableRecords)
+	dba.PUT("/db-tables/:table", handles.UpsertTableRecords)
+	dba.PATCH("/db-tables/:table", handles.UpsertTableRecords)
+	dba.GET("/db-tables/migrate", handles.CheckMigration)
+	dba.POST("/db-tables/migrate", handles.ExecuteMigration)
 
-	g := e.Group("", middlewares.Auth())
-	g.GET("/ping", func(c *gin.Context) {
+	e.GET("/ping", func(c *gin.Context) {
 		c.String(200, "pong")
 	})
+
+	g := e.Group("", middlewares.Auth())
+
 	g.GET("/user/me", handles.CurrentUser)
 	g.DELETE("/user/me", handles.DeleteUser)
 	g.PUT("/user/me", handles.UpdateUserInfo)
 	g.POST("/user/avatar", handles.UploadAvatar)
 	e.GET("/user/avatar/:id", handles.GetAvatar)
 	g.POST("/auth/change-password", handles.ChangePassword)
+	g.GET("/users", handles.ListUsers)
+	g.GET("/admins", handles.ListAdmins)
 
 	g.GET("/forum/posts", handles.GetPosts)
 	g.GET("/forum/posts/:id", handles.GetPost)
@@ -55,13 +66,14 @@ func Init(e *gin.Engine) {
 	g.POST("/forum/like/:id", handles.LikePost)
 	g.POST("/forum/comment/like/:id", handles.LikeComment)
 	g.GET("/forum/tags", handles.GetTags)
-	g.POST("/markdown/preview", handles.Markdown)
+	e.POST("/markdown/preview", handles.Markdown)
 	g.GET("/forum/posts/raw/:id", handles.GetRawPost)
 	g.GET("/forum/comments/raw/:id", handles.GetRawComment)
 
-	admin := e.Group("/admin", middlewares.Auth(), middlewares.AuthAdmin)
+	admin := e.Group("/admin", middlewares.Auth(), middlewares.AuthAdmin())
 	admin.DELETE("/forum/posts/:id", handles.DeletePostByID)
 	admin.DELETE("/forum/comments/:id", handles.DeleteCommentByID)
+	admin.POST("/user/create", handles.CreateUser)
 
 	Cors(e)
 }

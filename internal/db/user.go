@@ -49,3 +49,23 @@ func UpdateUser(u *model.User) error {
 func DeleteUserById(id uint) error {
 	return errors.WithStack(db.Delete(&model.User{}, id).Error)
 }
+
+func GetUsers() ([]model.User, error) {
+	var users []model.User
+	if err := db.Select("id, username, verified, stuname, stuid, role, disabled, bio").Find(&users).Error; err != nil {
+		return nil, errors.Wrapf(err, "failed to get users")
+	}
+	return users, nil
+}
+
+func GetUsersByRole(role int) ([]model.User, error) {
+	var users []model.User
+	if err := db.Select("id, username, verified, stuname, stuid, role, disabled, bio").Where("role = ?", role).Find(&users).Error; err != nil {
+		return nil, errors.Wrapf(err, "failed to get users by role")
+	}
+	return users, nil
+}
+
+func GetAllAdmins() ([]model.User, error) {
+	return GetUsersByRole(model.ADMIN)
+}

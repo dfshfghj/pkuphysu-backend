@@ -36,13 +36,16 @@ func Auth() func(c *gin.Context) {
 	}
 }
 
-func AuthAdmin(c *gin.Context) {
-	user := c.MustGet("CurrentUser").(*model.User)
+func AuthAdmin() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		user := c.MustGet("CurrentUser").(*model.User)
 
-	if !user.IsAdmin() {
-		utils.RespondError(c, 403, "PermissionDenied", errors.New("You are not an admin"))
-		c.Abort()
-	} else {
-		c.Next()
+		if !user.IsAdmin() {
+			utils.RespondError(c, 403, "PermissionDenied", errors.New("You are not an admin"))
+			c.Abort()
+			return
+		} else {
+			c.Next()
+		}
 	}
 }

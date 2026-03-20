@@ -23,6 +23,13 @@ func CreateUser(c *gin.Context) {
 		utils.RespondError(c, 400, "invalid_request", err)
 		return
 	}
+
+	req.User.Verified = true
+
+	if req.User.Role == 0 {
+		req.User.Role = model.GENERAL
+	}
+
 	req.User.SetPassword(req.PwdStaticHash)
 	if err := db.CreateUser(&req.User); err != nil {
 		utils.RespondError(c, 500, "internal_server_error", err)
@@ -166,4 +173,30 @@ func GetAvatar(c *gin.Context) {
 	}
 
 	c.File(filePath)
+}
+
+func ListUsers(c *gin.Context) {
+	users, err := db.GetUsers()
+	if err != nil {
+		utils.RespondError(c, 500, "failed_to_get_users", err)
+		return
+	}
+
+	utils.RespondSuccess(c, gin.H{
+		"users": users,
+		"count": len(users),
+	})
+}
+
+func ListAdmins(c *gin.Context) {
+	admins, err := db.GetAllAdmins()
+	if err != nil {
+		utils.RespondError(c, 500, "failed_to_get_admins", err)
+		return
+	}
+
+	utils.RespondSuccess(c, gin.H{
+		"admins": admins,
+		"count":  len(admins),
+	})
 }
