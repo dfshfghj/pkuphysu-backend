@@ -17,7 +17,7 @@ type ForumPost struct {
 	Type        int
 	CreatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `json:"-"`
-	UserID      uint
+	UserID      uint           `gorm:"constraint:OnDelete:CASCADE;"`
 	User        *User
 	Comments    []ForumComment `gorm:"foreignKey:PostID"`
 	Tags        []ForumTag     `gorm:"many2many:forum_post_tags;"`
@@ -31,33 +31,33 @@ type ForumComment struct {
 	Likenum     int
 	CreatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `json:"-"`
-	PostID      uint
-	UserID      uint
+	PostID      uint           `gorm:"constraint:OnDelete:CASCADE;"`
+	UserID      uint           `gorm:"constraint:OnDelete:CASCADE;"`
 	User        *User
-	QuoteID     *uint
+	QuoteID     *uint         `gorm:"constraint:OnDelete:SET NULL;"`
 	Quote       *ForumComment `gorm:"foreignKey:QuoteID"`
 }
 
 type ForumFollow struct {
 	ID        uint `gorm:"primaryKey"`
-	UserID    uint
-	PostID    uint
+	UserID    uint `gorm:"constraint:OnDelete:CASCADE;"`
+	PostID    uint `gorm:"constraint:OnDelete:CASCADE;"`
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt `json:"-"`
 }
 
 type ForumLike struct {
 	ID        uint `gorm:"primaryKey"`
-	UserID    uint
-	PostID    uint
+	UserID    uint `gorm:"constraint:OnDelete:CASCADE;"`
+	PostID    uint `gorm:"constraint:OnDelete:CASCADE;"`
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt `json:"-"`
 }
 
 type CommentLike struct {
 	ID        uint `gorm:"primaryKey"`
-	UserID    uint
-	CommentID uint
+	UserID    uint `gorm:"constraint:OnDelete:CASCADE;"`
+	CommentID uint `gorm:"constraint:OnDelete:CASCADE;"`
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt `json:"-"`
 }

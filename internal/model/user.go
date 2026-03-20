@@ -22,7 +22,7 @@ type User struct {
 	Username string `json:"username" gorm:"unique" binding:"required,alphanumunicode,min=1,max=50"` // username
 	Verified bool   `json:"verified"`                                                               // whether the user has been verified
 	Stuname  string `json:"stuname"`                                                                // student name
-	Stuid    string `json:"stuid" gorm:"unique"`                                                    // student id
+	Stuid    string `json:"stuid"`                                                                  // student id
 	PwdHash  string `json:"-"`                                                                      // password hash
 	PwdTS    int64  `json:"-"`                                                                      // password timestamp
 	Salt     string `json:"-"`                                                                      // unique salt

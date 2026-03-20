@@ -33,7 +33,7 @@ func GetForumPosts(cursor int, limit int, tags []string, keywords []string) ([]m
 		if len(tagConditions) > 0 {
 			dbQuery = dbQuery.Joins("JOIN pkuphysu_forum_post_tags ON pkuphysu_forum_posts.id = pkuphysu_forum_post_tags.forum_post_id").
 				Joins("JOIN pkuphysu_forum_tags ON pkuphysu_forum_post_tags.forum_tag_id = pkuphysu_forum_tags.id").
-				Where("(" + strings.Join(tagConditions, " OR ") + ")", tagArgs...)
+				Where("("+strings.Join(tagConditions, " OR ")+")", tagArgs...)
 		}
 	}
 
