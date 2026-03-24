@@ -51,6 +51,13 @@ type RateLimitConfig struct {
 	BlockDuration     time.Duration `mapstructure:"BLOCK_DURATION"`
 }
 
+type WechatConfig struct {
+	AppID     string   `mapstructure:"APP_ID"`
+	AppSecret string   `mapstructure:"APP_SECRET"`
+	Token     string   `mapstructure:"TOKEN"`
+	MasterIDs []string `mapstructure:"MASTER_IDS"`
+}
+
 type Config struct {
 	Port        int             `mapstructure:"PORT"`
 	JwtSecret   string          `mapstructure:"JWT_SECRET"`
@@ -60,6 +67,7 @@ type Config struct {
 	Cors        Cors            `mapstructure:"cors"`
 	Email       EmailConfig     `mapstructure:"email"`
 	RateLimit   RateLimitConfig `mapstructure:"rate_limit"`
+	Wechat      WechatConfig    `mapstructure:"wechat"`
 }
 
 func LoadConfig() (*Config, error) {
