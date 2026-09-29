@@ -64,7 +64,11 @@ func Init(e *gin.Engine) {
 
 	g.GET("/forum/posts", handles.GetPosts)
 	g.GET("/forum/posts/:id", handles.GetPost)
+	g.PUT("/forum/posts/:id", handles.UpdatePost)
+	g.DELETE("/forum/posts/:id", handles.DeleteOwnPost)
+	g.GET("/forum/posts/:id/versions", handles.GetPostVersions)
 	g.GET("/forum/comments/:id", handles.GetComments)
+	g.DELETE("/forum/comments/:id", handles.DeleteOwnComment)
 	g.POST("/forum/comments", handles.SubmitComment)
 	g.POST("/forum/posts", handles.SubmitPost)
 	g.POST("/forum/posts/:id/report", handles.ReportPost)

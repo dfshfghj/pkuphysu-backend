@@ -2,8 +2,10 @@ package handles
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"pkuphysu-backend/internal/config"
 	"pkuphysu-backend/internal/db"
@@ -15,12 +17,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// 每个帖子允许的最大修改次数
+const maxForumPostEdits = 3
+
 // 新内容的初始状态：REVIEW_REQUIRED = true 时先审后发，false 时直接发布
 func initialForumContentStatus() string {
 	if config.Conf.Moderation.ReviewRequired {
 		return model.ForumContentStatusPending
 	}
 	return model.ForumContentStatusApproved
+}
+
+func editedAtUnix(editedAt *time.Time) interface{} {
+	if editedAt == nil {
+		return nil
+	}
+	return editedAt.Unix()
 }
 
 // 评论不经过审核直接可见时，补齐审核流程里的副作用（帖子回复数、通知楼主）
@@ -116,18 +128,21 @@ func GetPost(c *gin.Context) {
 	}
 
 	postData := map[string]interface{}{
-		"id":        post.ID,
-		"text":      post.ContentHTML,
-		"timestamp": post.CreatedAt.Unix(),
-		"follownum": post.Follownum,
-		"likenum":   post.Likenum,
-		"reply":     post.Reply,
-		"tags":      tags,
-		"status":    post.Status,
-		"is_follow": isFollow,
-		"is_like":   isLike,
-		"userid":    post.User.ID,
-		"username":  post.User.Username,
+		"id":             post.ID,
+		"text":           post.ContentHTML,
+		"timestamp":      post.CreatedAt.Unix(),
+		"follownum":      post.Follownum,
+		"likenum":        post.Likenum,
+		"reply":          post.Reply,
+		"tags":           tags,
+		"status":         post.Status,
+		"is_follow":      isFollow,
+		"is_like":        isLike,
+		"userid":         post.User.ID,
+		"username":       post.User.Username,
+		"edit_count":     post.EditCount,
+		"max_edit_count": maxForumPostEdits,
+		"edited_at":      editedAtUnix(post.LastEditedAt),
 	}
 
 	utils.RespondSuccess(c, postData)
@@ -219,19 +234,20 @@ func GetPosts(c *gin.Context) {
 		}
 
 		postData[i] = map[string]interface{}{
-			"id":        post.ID,
-			"text":      post.ContentHTML,
-			"type":      post.Type,
-			"timestamp": post.CreatedAt.Unix(),
-			"follownum": post.Follownum,
-			"likenum":   post.Likenum,
-			"reply":     post.Reply,
-			"tags":      tags,
-			"status":    post.Status,
-			"is_follow": isFollow,
-			"is_like":   isLike,
-			"userid":    post.User.ID,
-			"username":  post.User.Username,
+			"id":         post.ID,
+			"text":       post.ContentHTML,
+			"type":       post.Type,
+			"timestamp":  post.CreatedAt.Unix(),
+			"follownum":  post.Follownum,
+			"likenum":    post.Likenum,
+			"reply":      post.Reply,
+			"tags":       tags,
+			"status":     post.Status,
+			"is_follow":  isFollow,
+			"is_like":    isLike,
+			"userid":     post.User.ID,
+			"username":   post.User.Username,
+			"edit_count": post.EditCount,
 		}
 	}
 
@@ -419,6 +435,149 @@ func SubmitPost(c *gin.Context) {
 	})
 }
 
+// UpdatePost 作者修改自己的帖子，最多 maxForumPostEdits 次，旧内容存入历史版本
+func UpdatePost(c *gin.Context) {
+	pid, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+
+	var req struct {
+		Text string   `json:"text"`
+		Tags []string `json:"tags"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondError(c, 400, "InvalidParams", err)
+		return
+	}
+
+	post, err := db.GetForumPostByID(pid)
+	if err != nil {
+		utils.RespondError(c, 404, "NotFound", err)
+		return
+	}
+
+	currentUser := c.MustGet("CurrentUser").(*model.User)
+	if post.UserID != currentUser.ID {
+		utils.RespondError(c, 403, "Forbidden", errors.New("无权修改该帖子"))
+		return
+	}
+	if post.EditCount >= maxForumPostEdits {
+		utils.RespondError(c, 403, "EditLimitExceeded", fmt.Errorf("帖子最多修改%d次", maxForumPostEdits))
+		return
+	}
+	if _, blocked := moderation.MatchSensitiveWord(req.Text); blocked {
+		utils.RespondError(c, 403, "SensitiveContentRejected", errors.New("帖子包含敏感词，已被直接拒绝"))
+		return
+	}
+
+	status := initialForumContentStatus()
+	if err := db.EditForumPost(post, req.Text, req.Tags, status); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	message := "帖子修改成功"
+	if status == model.ForumContentStatusPending {
+		moderation.EnqueuePost(post.ID)
+		message = "帖子修改成功，等待审核"
+	}
+
+	utils.RespondSuccess(c, gin.H{
+		"message":        message,
+		"id":             post.ID,
+		"status":         status,
+		"edit_count":     post.EditCount + 1,
+		"max_edit_count": maxForumPostEdits,
+	})
+}
+
+// DeleteOwnPost 作者删除自己的帖子，删除后帖子对所有人不可见
+func DeleteOwnPost(c *gin.Context) {
+	pid, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+
+	post, err := db.GetForumPostByID(pid)
+	if err != nil {
+		utils.RespondError(c, 404, "NotFound", err)
+		return
+	}
+
+	currentUser := c.MustGet("CurrentUser").(*model.User)
+	if post.UserID != currentUser.ID {
+		utils.RespondError(c, 403, "Forbidden", errors.New("无权删除该帖子"))
+		return
+	}
+
+	if err := deletePostWithNotifications(post); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	utils.RespondSuccess(c, gin.H{"message": "帖子删除成功"})
+}
+
+// GetPostVersions 获取帖子的全部版本（含当前版本），对所有可见该帖子的用户开放
+func GetPostVersions(c *gin.Context) {
+	pid, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+
+	post, err := db.GetForumPostByID(pid)
+	if err != nil {
+		utils.RespondError(c, 404, "NotFound", err)
+		return
+	}
+
+	userID := c.MustGet("CurrentUser").(*model.User).ID
+	if !canViewForumContent(post.Status, post.UserID, userID) {
+		utils.RespondError(c, 404, "NotFound", nil)
+		return
+	}
+
+	versions, err := db.GetForumPostVersions(post.ID)
+	if err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	versionData := make([]map[string]interface{}, 0, len(versions)+1)
+	for _, version := range versions {
+		versionData = append(versionData, map[string]interface{}{
+			"version":    version.Version,
+			"content":    version.Content,
+			"text":       version.ContentHTML,
+			"timestamp":  version.CreatedAt.Unix(),
+			"is_current": false,
+		})
+	}
+
+	currentTimestamp := post.CreatedAt
+	if post.LastEditedAt != nil {
+		currentTimestamp = *post.LastEditedAt
+	}
+	versionData = append(versionData, map[string]interface{}{
+		"version":    post.EditCount + 1,
+		"content":    post.Content,
+		"text":       post.ContentHTML,
+		"timestamp":  currentTimestamp.Unix(),
+		"is_current": true,
+	})
+
+	utils.RespondSuccess(c, gin.H{
+		"post_id":        post.ID,
+		"edit_count":     post.EditCount,
+		"max_edit_count": maxForumPostEdits,
+		"versions":       versionData,
+	})
+}
+
 func GetFollowedPosts(c *gin.Context) {
 	limitStr := c.Query("limit")
 	limit, err := strconv.Atoi(limitStr)
@@ -455,18 +614,19 @@ func GetFollowedPosts(c *gin.Context) {
 		}
 
 		postData[i] = map[string]interface{}{
-			"id":        post.ID,
-			"text":      post.ContentHTML,
-			"type":      post.Type,
-			"timestamp": post.CreatedAt.Unix(),
-			"follownum": post.Follownum,
-			"likenum":   post.Likenum,
-			"reply":     post.Reply,
-			"tags":      tags,
-			"status":    post.Status,
-			"is_follow": 1,
-			"userid":    post.User.ID,
-			"username":  post.User.Username,
+			"id":         post.ID,
+			"text":       post.ContentHTML,
+			"type":       post.Type,
+			"timestamp":  post.CreatedAt.Unix(),
+			"follownum":  post.Follownum,
+			"likenum":    post.Likenum,
+			"reply":      post.Reply,
+			"tags":       tags,
+			"status":     post.Status,
+			"is_follow":  1,
+			"userid":     post.User.ID,
+			"username":   post.User.Username,
+			"edit_count": post.EditCount,
 		}
 	}
 
@@ -873,36 +1033,14 @@ func ReviewCommentByID(c *gin.Context) {
 	utils.RespondSuccess(c, gin.H{"message": "评论审核状态已更新", "status": req.Status})
 }
 
-// DeletePostByID 管理员按ID删除帖子
-func DeletePostByID(c *gin.Context) {
-	id := c.Param("id")
-
-	postID, err := strconv.ParseUint(id, 10, 32)
-	if err != nil {
-		utils.RespondError(c, 400, "InvalidID", err)
-		return
-	}
-
-	// 获取帖子信息，以便发送通知
-	post, err := db.GetForumPostByID(int(postID))
-	if err != nil {
-		utils.RespondError(c, 500, "ServerError", err)
-		return
-	}
-
-	if post == nil {
-		utils.RespondError(c, 404, "PostNotFound", nil)
-		return
-	}
-
+// deletePostWithNotifications 删除帖子并通知其关注者与评论者
+func deletePostWithNotifications(post *model.ForumPost) error {
 	// 先获取通知目标，再删除帖子。删除后关联关系会被清理，无法再查到关注/评论用户。
-	followers, followerErr := db.GetPostFollowers(uint(postID))
-	commenters, commenterErr := db.GetPostCommenters(uint(postID))
+	followers, followerErr := db.GetPostFollowers(post.ID)
+	commenters, commenterErr := db.GetPostCommenters(post.ID)
 
-	err = db.DeleteForumPostByID(uint(postID))
-	if err != nil {
-		utils.RespondError(c, 500, "ServerError", err)
-		return
+	if err := db.DeleteForumPostByID(post.ID); err != nil {
+		return err
 	}
 
 	// 发送通知给关注者
@@ -944,39 +1082,47 @@ func DeletePostByID(c *gin.Context) {
 		}
 	}
 
-	utils.RespondSuccess(c, gin.H{"message": "帖子删除成功"})
+	return nil
 }
 
-// DeleteCommentByID 管理员按ID删除评论
-func DeleteCommentByID(c *gin.Context) {
+// DeletePostByID 管理员按ID删除帖子
+func DeletePostByID(c *gin.Context) {
 	id := c.Param("id")
 
-	commentID, err := strconv.ParseUint(id, 10, 32)
+	postID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
 		utils.RespondError(c, 400, "InvalidID", err)
 		return
 	}
 
-	// 获取评论信息，以便发送通知
-	comment, err := db.GetForumCommentByID(uint(commentID))
+	// 获取帖子信息，以便发送通知
+	post, err := db.GetForumPostByID(int(postID))
 	if err != nil {
 		utils.RespondError(c, 500, "ServerError", err)
 		return
 	}
 
-	if comment == nil {
-		utils.RespondError(c, 404, "CommentNotFound", nil)
+	if post == nil {
+		utils.RespondError(c, 404, "PostNotFound", nil)
 		return
 	}
 
-	err = db.DeleteForumCommentByID(uint(commentID))
-	if err != nil {
+	if err := deletePostWithNotifications(post); err != nil {
 		utils.RespondError(c, 500, "ServerError", err)
 		return
+	}
+
+	utils.RespondSuccess(c, gin.H{"message": "帖子删除成功"})
+}
+
+// deleteCommentWithNotifications 删除评论并通知相关评论者
+func deleteCommentWithNotifications(comment *model.ForumComment) error {
+	if err := db.DeleteForumCommentByID(comment.ID); err != nil {
+		return err
 	}
 
 	// 发送通知给回复这条评论的用户（即引用了此评论的评论者）
-	replyingComments, err := db.GetCommentsQuotingComment(uint(commentID))
+	replyingComments, err := db.GetCommentsQuotingComment(comment.ID)
 	if err == nil {
 		// 使用map去重，避免重复通知
 		notifiedUsers := make(map[uint]bool)
@@ -1015,6 +1161,64 @@ func DeleteCommentByID(c *gin.Context) {
 		}
 	}
 
+	return nil
+}
+
+// DeleteOwnComment 作者删除自己的评论
+func DeleteOwnComment(c *gin.Context) {
+	cid, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+
+	comment, err := db.GetForumCommentByID(uint(cid))
+	if err != nil {
+		utils.RespondError(c, 404, "NotFound", err)
+		return
+	}
+
+	currentUser := c.MustGet("CurrentUser").(*model.User)
+	if comment.UserID != currentUser.ID {
+		utils.RespondError(c, 403, "Forbidden", errors.New("无权删除该评论"))
+		return
+	}
+
+	if err := deleteCommentWithNotifications(comment); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	utils.RespondSuccess(c, gin.H{"message": "评论删除成功"})
+}
+
+// DeleteCommentByID 管理员按ID删除评论
+func DeleteCommentByID(c *gin.Context) {
+	id := c.Param("id")
+
+	commentID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidID", err)
+		return
+	}
+
+	// 获取评论信息，以便发送通知
+	comment, err := db.GetForumCommentByID(uint(commentID))
+	if err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	if comment == nil {
+		utils.RespondError(c, 404, "CommentNotFound", nil)
+		return
+	}
+
+	if err := deleteCommentWithNotifications(comment); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
 	utils.RespondSuccess(c, gin.H{"message": "评论删除成功"})
 }
 
@@ -1038,12 +1242,14 @@ func GetRawPost(c *gin.Context) {
 	}
 
 	rawData := map[string]interface{}{
-		"id":        post.ID,
-		"content":   post.Content,
-		"timestamp": post.CreatedAt.Unix(),
-		"status":    post.Status,
-		"userid":    post.User.ID,
-		"username":  post.User.Username,
+		"id":             post.ID,
+		"content":        post.Content,
+		"timestamp":      post.CreatedAt.Unix(),
+		"status":         post.Status,
+		"userid":         post.User.ID,
+		"username":       post.User.Username,
+		"edit_count":     post.EditCount,
+		"max_edit_count": maxForumPostEdits,
 	}
 
 	utils.RespondSuccess(c, rawData)
