@@ -1,10 +1,14 @@
 package db
 
 import (
+	"errors"
 	"strings"
+	"time"
 
 	"pkuphysu-backend/internal/model"
 	"pkuphysu-backend/internal/utils"
+
+	"gorm.io/gorm"
 )
 
 func forumPostVisibleToUserQuery(userID uint) string {
@@ -117,29 +121,118 @@ func CreateForumPost(post *model.ForumPost) error {
 
 	// 处理标签
 	if len(post.Tags) > 0 {
-		var finalTags []model.ForumTag
-		for _, tag := range post.Tags {
-			if tag.Name == "" {
-				continue
-			}
-
-			var existingTag model.ForumTag
-			// 查找是否已存在同名标签
-			if err := db.Where("name = ?", tag.Name).First(&existingTag).Error; err != nil {
-				// 标签不存在，创建新标签
-				newTag := model.ForumTag{Name: tag.Name}
-				if err := db.Create(&newTag).Error; err != nil {
-					return err
-				}
-				finalTags = append(finalTags, newTag)
-			} else {
-				finalTags = append(finalTags, existingTag)
-			}
+		names := make([]string, len(post.Tags))
+		for i, tag := range post.Tags {
+			names[i] = tag.Name
 		}
-		post.Tags = finalTags
+		tags, err := resolveForumTags(db, names)
+		if err != nil {
+			return err
+		}
+		post.Tags = tags
 	}
 
 	return db.Create(post).Error
+}
+
+// EditForumPost 将帖子当前内容存为历史版本后，更新正文、标签与状态
+func EditForumPost(post *model.ForumPost, content string, tagNames []string, status string) error {
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if err := tx.Error; err != nil {
+		return err
+	}
+
+	// 当前内容成为第 EditCount+1 个历史版本，版本时间取该内容生效的时间
+	version := model.ForumPostVersion{
+		PostID:      post.ID,
+		Version:     post.EditCount + 1,
+		Content:     post.Content,
+		ContentHTML: post.ContentHTML,
+		ContentText: post.ContentText,
+		CreatedAt:   post.CreatedAt,
+	}
+	if post.LastEditedAt != nil {
+		version.CreatedAt = *post.LastEditedAt
+	}
+	if err := tx.Create(&version).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err := tx.Model(&model.ForumPost{}).Where("id = ?", post.ID).Updates(map[string]interface{}{
+		"content":        content,
+		"content_html":   utils.MarkdownToHtml(content),
+		"content_text":   utils.MarkdownToText(content),
+		"status":         status,
+		"edit_count":     post.EditCount + 1,
+		"last_edited_at": time.Now(),
+	}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err := tx.Where(&model.ForumPostTag{PostID: post.ID}).Delete(&model.ForumPostTag{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	tags, err := resolveForumTags(tx, tagNames)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, tag := range tags {
+		link := model.ForumPostTag{PostID: post.ID, TagID: tag.ID}
+		if err := tx.Create(&link).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit().Error
+}
+
+// GetForumPostVersions 获取帖子的历史版本，按版本号升序
+func GetForumPostVersions(postID uint) ([]model.ForumPostVersion, error) {
+	var versions []model.ForumPostVersion
+	err := db.Where("post_id = ?", postID).Order("version ASC").Find(&versions).Error
+	return versions, err
+}
+
+// resolveForumTags 按名称查找标签，不存在的自动创建
+func resolveForumTags(tx *gorm.DB, names []string) ([]model.ForumTag, error) {
+	var tags []model.ForumTag
+	seen := make(map[string]bool)
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+
+		var tag model.ForumTag
+		err := tx.Where("name = ?", name).First(&tag).Error
+		if err == nil {
+			tags = append(tags, tag)
+			continue
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+
+		tag = model.ForumTag{Name: name}
+		if err := tx.Create(&tag).Error; err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, nil
 }
 
 // GetForumCommentByID 根据ID获取单个评论

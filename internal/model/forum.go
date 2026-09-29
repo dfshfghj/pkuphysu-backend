@@ -14,21 +14,34 @@ const (
 )
 
 type ForumPost struct {
+	ID           uint `gorm:"primaryKey"`
+	Content      string
+	ContentHTML  string
+	ContentText  string
+	Status       string `gorm:"type:varchar(32);index;default:'pending'"`
+	Reply        int
+	Follownum    int
+	Likenum      int
+	Type         int
+	EditCount    int
+	LastEditedAt *time.Time
+	CreatedAt    time.Time
+	DeletedAt    gorm.DeletedAt `json:"-"`
+	UserID       uint           `gorm:"constraint:OnDelete:CASCADE;"`
+	User         *User
+	Comments     []ForumComment `gorm:"foreignKey:PostID"`
+	Tags         []ForumTag     `gorm:"many2many:forum_post_tags;"`
+}
+
+// ForumPostVersion 保存帖子被修改前的历史内容快照
+type ForumPostVersion struct {
 	ID          uint `gorm:"primaryKey"`
+	PostID      uint `gorm:"index;constraint:OnDelete:CASCADE;"`
+	Version     int
 	Content     string
 	ContentHTML string
 	ContentText string
-	Status      string `gorm:"type:varchar(32);index;default:'pending'"`
-	Reply       int
-	Follownum   int
-	Likenum     int
-	Type        int
 	CreatedAt   time.Time
-	DeletedAt   gorm.DeletedAt `json:"-"`
-	UserID      uint           `gorm:"constraint:OnDelete:CASCADE;"`
-	User        *User
-	Comments    []ForumComment `gorm:"foreignKey:PostID"`
-	Tags        []ForumTag     `gorm:"many2many:forum_post_tags;"`
 }
 
 type ForumComment struct {
