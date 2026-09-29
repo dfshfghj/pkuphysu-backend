@@ -7,6 +7,14 @@ import (
 	"pkuphysu-backend/internal/utils"
 )
 
+func forumPostVisibleToUserQuery(userID uint) string {
+	return "(status = '" + model.ForumContentStatusApproved + "' OR user_id = ?)"
+}
+
+func forumCommentVisibleToUserQuery(userID uint) string {
+	return "(status = '" + model.ForumContentStatusApproved + "' OR user_id = ?)"
+}
+
 // GetForumPostByID 根据ID获取单个帖子
 func GetForumPostByID(pid int) (*model.ForumPost, error) {
 	var post model.ForumPost
@@ -15,8 +23,8 @@ func GetForumPostByID(pid int) (*model.ForumPost, error) {
 }
 
 // GetForumPosts 获取帖子列表
-func GetForumPosts(cursor int, limit int, tags []string, keywords []string) ([]model.ForumPost, error) {
-	dbQuery := db.Preload("User").Preload("Tags")
+func GetForumPosts(cursor int, limit int, tags []string, keywords []string, userID uint) ([]model.ForumPost, error) {
+	dbQuery := db.Preload("User").Preload("Tags").Where(forumPostVisibleToUserQuery(userID), userID)
 
 	if len(tags) > 0 {
 		// 处理多个 tag，使用 OR 条件
@@ -65,8 +73,10 @@ func GetForumPosts(cursor int, limit int, tags []string, keywords []string) ([]m
 }
 
 // GetForumComments 获取评论列表
-func GetForumComments(pid string, cursor int, limit int, sort string) ([]model.ForumComment, error) {
-	dbQuery := db.Preload("User").Preload("Quote").Preload("Quote.User").Where("post_id = ?", pid)
+func GetForumComments(pid string, cursor int, limit int, sort string, userID uint) ([]model.ForumComment, error) {
+	dbQuery := db.Preload("User").Preload("Quote").Preload("Quote.User").
+		Where("post_id = ?", pid).
+		Where(forumCommentVisibleToUserQuery(userID), userID)
 
 	if sort == "desc" {
 		dbQuery = dbQuery.Order("id DESC")
@@ -91,6 +101,9 @@ func GetForumComments(pid string, cursor int, limit int, sort string) ([]model.F
 func CreateForumComment(comment *model.ForumComment) error {
 	comment.ContentHTML = utils.MarkdownToHtml(comment.Content)
 	comment.ContentText = utils.MarkdownToText(comment.Content)
+	if comment.Status == "" {
+		comment.Status = model.ForumContentStatusPending
+	}
 	return db.Create(comment).Error
 }
 
@@ -98,6 +111,9 @@ func CreateForumComment(comment *model.ForumComment) error {
 func CreateForumPost(post *model.ForumPost) error {
 	post.ContentHTML = utils.MarkdownToHtml(post.Content)
 	post.ContentText = utils.MarkdownToText(post.Content)
+	if post.Status == "" {
+		post.Status = model.ForumContentStatusPending
+	}
 
 	// 处理标签
 	if len(post.Tags) > 0 {
@@ -167,7 +183,11 @@ func GetFollowedPosts(userID uint, cursor int, limit int) ([]model.ForumPost, er
 
 	// 根据帖子ID获取完整的帖子信息
 	var posts []model.ForumPost
-	err = db.Preload("User").Preload("Tags").Where("id IN ?", postIDs).Order("id DESC").Find(&posts).Error
+	err = db.Preload("User").Preload("Tags").
+		Where("id IN ?", postIDs).
+		Where(forumPostVisibleToUserQuery(userID), userID).
+		Order("id DESC").
+		Find(&posts).Error
 	return posts, err
 }
 
@@ -210,10 +230,46 @@ func UpdateForumPostReplyNum(postID uint, replynum int) error {
 	return db.Model(&model.ForumPost{}).Where("id = ?", postID).Update("reply", replynum).Error
 }
 
+func SetForumPostStatus(postID uint, status string) error {
+	return db.Model(&model.ForumPost{}).Where("id = ?", postID).Update("status", status).Error
+}
+
+func TransitionForumPostStatus(postID uint, fromStatus string, toStatus string) (bool, error) {
+	result := db.Model(&model.ForumPost{}).
+		Where("id = ? AND status = ?", postID, fromStatus).
+		Update("status", toStatus)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+func TransitionForumCommentStatus(commentID uint, fromStatus string, toStatus string) (bool, error) {
+	result := db.Model(&model.ForumComment{}).
+		Where("id = ? AND status = ?", commentID, fromStatus).
+		Update("status", toStatus)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+func CountApprovedComments(postID uint) (int64, error) {
+	var count int64
+	err := db.Model(&model.ForumComment{}).
+		Where("post_id = ? AND status = ?", postID, model.ForumContentStatusApproved).
+		Count(&count).Error
+	return count, err
+}
+
 // GetForumPostsByIDs 根据ID列表获取帖子
 func GetForumPostsByIDs(postIDs []uint) ([]model.ForumPost, error) {
 	var posts []model.ForumPost
-	err := db.Preload("User").Preload("Tags").Where("id IN ?", postIDs).Order("id DESC").Find(&posts).Error
+	err := db.Preload("User").Preload("Tags").
+		Where("id IN ?", postIDs).
+		Where("status = ?", model.ForumContentStatusApproved).
+		Order("id DESC").
+		Find(&posts).Error
 	return posts, err
 }
 
@@ -286,6 +342,30 @@ func UpdateCommentLikenum(commentID uint, likenum int) error {
 	return db.Model(&model.ForumComment{}).Where("id = ?", commentID).Update("likenum", likenum).Error
 }
 
+func SetForumCommentStatus(commentID uint, status string) error {
+	return db.Model(&model.ForumComment{}).Where("id = ?", commentID).Update("status", status).Error
+}
+
+func ListPendingForumPosts(limit int) ([]model.ForumPost, error) {
+	var posts []model.ForumPost
+	err := db.Preload("User").Preload("Tags").
+		Where("status = ?", model.ForumContentStatusPending).
+		Order("id ASC").
+		Limit(limit).
+		Find(&posts).Error
+	return posts, err
+}
+
+func ListPendingForumComments(limit int) ([]model.ForumComment, error) {
+	var comments []model.ForumComment
+	err := db.Preload("User").Preload("Quote").Preload("Quote.User").
+		Where("status = ?", model.ForumContentStatusPending).
+		Order("id ASC").
+		Limit(limit).
+		Find(&comments).Error
+	return comments, err
+}
+
 // GetTags 获取所有系统默认标签列表
 func GetTags() ([]model.ForumTag, error) {
 	var tags []model.ForumTag
@@ -313,7 +393,41 @@ func GetPostsByTagNames(tagNames []string, cursor int, limit int) ([]model.Forum
 	return posts, err
 }
 
-// DeleteForumPostByID 根据ID删除帖子（管理员专用）
+func GetPostFollowers(postID uint) ([]uint, error) {
+	var followerIDs []uint
+	err := db.Raw(`
+        SELECT DISTINCT user_id 
+        FROM forum_follows 
+        WHERE post_id = ? AND deleted_at IS NULL
+    `, postID).Scan(&followerIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	return followerIDs, nil
+}
+
+func GetPostCommenters(postID uint) ([]uint, error) {
+	var commenterIDs []uint
+	err := db.Raw(`
+        SELECT DISTINCT user_id 
+        FROM forum_comments 
+        WHERE post_id = ? AND deleted_at IS NULL
+    `, postID).Scan(&commenterIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	return commenterIDs, nil
+}
+
+func GetCommentsQuotingComment(commentID uint) ([]model.ForumComment, error) {
+	var comments []model.ForumComment
+	err := db.Where("quote_id = ? AND deleted_at IS NULL", commentID).Find(&comments).Error
+	if err != nil {
+		return nil, err
+	}
+	return comments, nil
+}
+
 func DeleteForumPostByID(postID uint) error {
 	tx := db.Begin()
 	defer func() {
@@ -326,26 +440,21 @@ func DeleteForumPostByID(postID uint) error {
 		return err
 	}
 
-	// 删除帖子的关联数据
-	// 1. 删除帖子与标签的关联
-	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumPostTag{}).Error; err != nil {
+	if err := tx.Where(&model.ForumPostTag{PostID: postID}).Delete(&model.ForumPostTag{}).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// 2. 删除帖子的关注记录
 	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumFollow{}).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// 3. 删除帖子的点赞记录
 	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumLike{}).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// 4. 删除帖子的所有评论及其关联数据
 	var comments []model.ForumComment
 	if err := tx.Where("post_id = ?", postID).Find(&comments).Error; err != nil {
 		tx.Rollback()
@@ -353,20 +462,17 @@ func DeleteForumPostByID(postID uint) error {
 	}
 
 	for _, comment := range comments {
-		// 删除评论的点赞记录
 		if err := tx.Where("comment_id = ?", comment.ID).Delete(&model.CommentLike{}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
 	}
 
-	// 删除所有评论
 	if err := tx.Where("post_id = ?", postID).Delete(&model.ForumComment{}).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// 5. 最后删除帖子本身
 	if err := tx.Where("id = ?", postID).Delete(&model.ForumPost{}).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -375,7 +481,6 @@ func DeleteForumPostByID(postID uint) error {
 	return tx.Commit().Error
 }
 
-// DeleteForumCommentByID 根据ID删除评论（管理员专用）
 func DeleteForumCommentByID(commentID uint) error {
 	tx := db.Begin()
 	defer func() {
@@ -388,24 +493,20 @@ func DeleteForumCommentByID(commentID uint) error {
 		return err
 	}
 
-	// 1. 删除评论的点赞记录
+	var comment model.ForumComment
+	if err := tx.Where("id = ?", commentID).First(&comment).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
 	if err := tx.Where("comment_id = ?", commentID).Delete(&model.CommentLike{}).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// 2. 删除评论本身
 	if err := tx.Where("id = ?", commentID).Delete(&model.ForumComment{}).Error; err != nil {
 		tx.Rollback()
 		return err
-	}
-
-	// 3. 更新帖子的回复计数
-	var comment model.ForumComment
-	if err := tx.Where("id = ?", commentID).First(&comment).Error; err != nil {
-		// 如果评论不存在，直接返回成功
-		tx.Rollback()
-		return nil
 	}
 
 	postID := comment.PostID

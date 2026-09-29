@@ -8,7 +8,9 @@ var Models = []interface{}{
 	&ForumFollow{},
 	&ForumLike{},
 	&CommentLike{},
+	&ForumReport{},
 	&EvepartyInvestment{},
 	&WechatArticle{},
 	&WechatCookie{},
+	&Notification{},
 }

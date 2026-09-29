@@ -1,0 +1,61 @@
+PORT = 8082
+JWT_SECRET = "7MdQy5CMC6qd1sH87CBu1PjCjYIRuNhpX4v16TY07EU="
+TOKEN_EXPIRE = 60
+
+[database]
+HOST = "localhost"
+PORT = 5432
+USER = "pkuphysu_dev"
+PASSWORD = "pkuphysu_dev_password"
+NAME = "pkuphysu_dev"
+SSL_MODE = "disable"
+TABLE_PREFIX = "pkuphysu_"
+
+[cors]
+ALLOW_ORIGINS = ["http://localhost:5173", "http://tauri.localhost"]
+ALLOW_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+ALLOW_HEADERS = ["Origin", "Content-Type", "Accept", "Authorization"]
+
+[log_config]
+ENABLE = true
+LEVEL = "debug"
+MAX_SIZE = 100
+MAX_AGE = 30
+MAX_BACKUPS = 7
+COMPRESS = false
+FILE_PATH = "./data/log/dev.log"
+
+[email]
+# 开发环境不配置真实邮箱服务，避免向真实用户发送邮件。
+# 验证码仍会写入数据库 pkuphysu_email_verifications 表，可直接查询：
+#   psql -h localhost -p 5432 -U pkuphysu_dev -d pkuphysu_dev \
+#     -c "SELECT email, code FROM pkuphysu_email_verifications WHERE used = false;"
+HOST = ""
+PORT = 465
+USERNAME = ""
+PASSWORD = ""
+FROM = "dev@localhost"
+
+[rate_limit]
+REQUESTS_PER_SECOND = 100
+BURST = 200
+BLOCK_DURATION = "1m"
+
+[wechat]
+# 开发环境不接入真实公众号，留空
+APP_ID = ""
+APP_SECRET = ""
+TOKEN = ""
+MASTER_IDS = []
+
+[moderation]
+ENABLED = false
+# 开发环境直接发布，方便调试；需要测试审核流程时改成 true
+REVIEW_REQUIRED = false
+BASE_URL = "https://open.bigmodel.cn/api/paas/v4/moderations"
+TOKEN = ""
+TIMEOUT = "5s"
+RETRY_INTERVAL = "30s"
+QUEUE_SIZE = 128
+BATCH_SIZE = 20
+REPORT_THRESHOLD = 3

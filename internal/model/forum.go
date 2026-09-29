@@ -6,11 +6,19 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	ForumContentStatusPending      = "pending"
+	ForumContentStatusApproved     = "approved"
+	ForumContentStatusManualReview = "manual_review"
+	ForumContentStatusRejected     = "rejected"
+)
+
 type ForumPost struct {
 	ID          uint `gorm:"primaryKey"`
 	Content     string
 	ContentHTML string
 	ContentText string
+	Status      string `gorm:"type:varchar(32);index;default:'pending'"`
 	Reply       int
 	Follownum   int
 	Likenum     int
@@ -28,6 +36,7 @@ type ForumComment struct {
 	Content     string
 	ContentHTML string
 	ContentText string
+	Status      string `gorm:"type:varchar(32);index;default:'pending'"`
 	Likenum     int
 	CreatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `json:"-"`
@@ -71,6 +80,6 @@ type ForumTag struct {
 }
 
 type ForumPostTag struct {
-	PostID uint `gorm:"primaryKey"`
-	TagID  uint `gorm:"primaryKey"`
+	PostID uint `gorm:"column:forum_post_id;primaryKey"`
+	TagID  uint `gorm:"column:forum_tag_id;primaryKey"`
 }

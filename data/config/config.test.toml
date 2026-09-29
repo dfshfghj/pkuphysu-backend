@@ -1,0 +1,50 @@
+PORT = 8080
+JWT_SECRET = "test-secret-key-for-testing-only-do-not-use-in-production"
+TOKEN_EXPIRE = 24
+
+[DATABASE]
+HOST = "localhost"
+PORT = 5432
+USER = "pkuphysu_test"
+PASSWORD = "test_password_7531d391126082b3"
+NAME = "pkuphysu_test"
+SSL_MODE = "disable"
+TABLE_PREFIX = "pkuphysu_"
+
+[log_config]
+ENABLE = false
+LEVEL = "debug"
+MAX_SIZE = 100
+MAX_AGE = 30
+MAX_BACKUPS = 7
+COMPRESS = false
+FILE_PATH = "./data/logs/test.log"
+
+[cors]
+ALLOW_ORIGINS = ["http://localhost:3000"]
+ALLOW_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+ALLOW_HEADERS = ["Content-Type", "Authorization"]
+
+[email]
+HOST = "smtp.example.com"
+PORT = 587
+USERNAME = "test@example.com"
+PASSWORD = "test_password_7531d391126082b3"
+FROM = "test@example.com"
+
+[rate_limit]
+REQUESTS_PER_SECOND = 100
+BURST = 200
+BLOCK_DURATION = "1m"
+
+[moderation]
+ENABLED = false
+REVIEW_REQUIRED = true
+BASE_URL = "https://open.bigmodel.cn/api/paas/v4/moderations"
+TOKEN = ""
+SENSITIVE_WORDS = ["违禁词"]
+TIMEOUT = "1s"
+RETRY_INTERVAL = "1s"
+QUEUE_SIZE = 16
+BATCH_SIZE = 10
+REPORT_THRESHOLD = 3

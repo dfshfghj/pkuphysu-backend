@@ -4,6 +4,8 @@ import (
 	"pkuphysu-backend/internal/config"
 	"pkuphysu-backend/internal/db"
 	"pkuphysu-backend/internal/logger"
+	"pkuphysu-backend/internal/moderation"
+	"pkuphysu-backend/internal/wechat"
 	"pkuphysu-backend/server/handles"
 	"pkuphysu-backend/server/middlewares"
 
@@ -19,6 +21,8 @@ func Init(e *gin.Engine) {
 	e.Use(gin.LoggerWithWriter(log.StandardLogger().Out))
 	e.Use(gin.RecoveryWithWriter(log.StandardLogger().Out))
 	db.InitDB()
+	moderation.Init()
+	wechat.Init()
 
 	e.Use(middlewares.RateLimit())
 
@@ -56,11 +60,15 @@ func Init(e *gin.Engine) {
 	g.GET("/users", handles.ListUsers)
 	g.GET("/admins", handles.ListAdmins)
 
+	g.GET("/notifications", handles.GetNotifications)
+
 	g.GET("/forum/posts", handles.GetPosts)
 	g.GET("/forum/posts/:id", handles.GetPost)
 	g.GET("/forum/comments/:id", handles.GetComments)
 	g.POST("/forum/comments", handles.SubmitComment)
 	g.POST("/forum/posts", handles.SubmitPost)
+	g.POST("/forum/posts/:id/report", handles.ReportPost)
+	g.POST("/forum/comments/:id/report", handles.ReportComment)
 	g.GET("/forum/follow", handles.GetFollowedPosts)
 	g.POST("/forum/follow/:id", handles.FollowPost)
 	g.POST("/forum/like/:id", handles.LikePost)
@@ -73,7 +81,13 @@ func Init(e *gin.Engine) {
 	admin := e.Group("/admin", middlewares.Auth(), middlewares.AuthAdmin())
 	admin.DELETE("/forum/posts/:id", handles.DeletePostByID)
 	admin.DELETE("/forum/comments/:id", handles.DeleteCommentByID)
+	admin.POST("/forum/posts/:id/review", handles.ReviewPostByID)
+	admin.POST("/forum/comments/:id/review", handles.ReviewCommentByID)
+	admin.GET("/forum/reports", handles.ListForumReports)
 	admin.POST("/user/create", handles.CreateUser)
+
+	we := e.Group("/wechat")
+	we.Any("", handles.Message)
 
 	Cors(e)
 }

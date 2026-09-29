@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -58,25 +61,42 @@ type WechatConfig struct {
 	MasterIDs []string `mapstructure:"MASTER_IDS"`
 }
 
+type ModerationConfig struct {
+	Enabled         bool          `mapstructure:"ENABLED"`
+	ReviewRequired  bool          `mapstructure:"REVIEW_REQUIRED"`
+	BaseURL         string        `mapstructure:"BASE_URL"`
+	Token           string        `mapstructure:"TOKEN"`
+	SensitiveWords  []string      `mapstructure:"SENSITIVE_WORDS"`
+	Timeout         time.Duration `mapstructure:"TIMEOUT"`
+	RetryInterval   time.Duration `mapstructure:"RETRY_INTERVAL"`
+	QueueSize       int           `mapstructure:"QUEUE_SIZE"`
+	BatchSize       int           `mapstructure:"BATCH_SIZE"`
+	ReportThreshold int           `mapstructure:"REPORT_THRESHOLD"`
+}
+
 type Config struct {
-	Port        int             `mapstructure:"PORT"`
-	JwtSecret   string          `mapstructure:"JWT_SECRET"`
-	TokenExpire int             `mapstructure:"TOKEN_EXPIRE"`
-	Database    Database        `mapstructure:"DATABASE"`
-	LogConfig   LogConfig       `mapstructure:"log_config"`
-	Cors        Cors            `mapstructure:"cors"`
-	Email       EmailConfig     `mapstructure:"email"`
-	RateLimit   RateLimitConfig `mapstructure:"rate_limit"`
-	Wechat      WechatConfig    `mapstructure:"wechat"`
+	Port        int              `mapstructure:"PORT"`
+	JwtSecret   string           `mapstructure:"JWT_SECRET"`
+	TokenExpire int              `mapstructure:"TOKEN_EXPIRE"`
+	Database    Database         `mapstructure:"DATABASE"`
+	LogConfig   LogConfig        `mapstructure:"log_config"`
+	Cors        Cors             `mapstructure:"cors"`
+	Email       EmailConfig      `mapstructure:"email"`
+	RateLimit   RateLimitConfig  `mapstructure:"rate_limit"`
+	Wechat      WechatConfig     `mapstructure:"wechat"`
+	Moderation  ModerationConfig `mapstructure:"moderation"`
 }
 
 func LoadConfig() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("toml")
+	v := viper.New()
+	v.SetConfigName(configNameByEnv())
+	v.SetConfigType("toml")
+	addConfigPaths(v)
 
-	viper.AddConfigPath("./data/config")
+	// 配置里不写 REVIEW_REQUIRED 时，保持"先审后发"的旧行为
+	v.SetDefault("moderation.review_required", true)
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			return nil, fmt.Errorf("config file not found")
 		}
@@ -84,11 +104,47 @@ func LoadConfig() (*Config, error) {
 	}
 
 	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
+	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unable to decode config: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+func configNameByEnv() string {
+	switch strings.ToLower(os.Getenv("PKUPHYSU_ENV")) {
+	case "test":
+		return "config.test"
+	case "dev":
+		return "config.dev"
+	default: // prod 或未设置
+		return "config"
+	}
+}
+
+func addConfigPaths(v *viper.Viper) {
+	// 常见相对路径（覆盖从项目根目录和包目录运行测试的场景）
+	v.AddConfigPath("./data/config")
+	v.AddConfigPath("../data/config")
+	v.AddConfigPath("../../data/config")
+	v.AddConfigPath("../../../data/config")
+
+	// 从当前工作目录逐级向上搜索 data/config，提升在不同执行目录下的稳定性。
+	wd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	for dir := wd; ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, "data", "config")
+		if stat, statErr := os.Stat(candidate); statErr == nil && stat.IsDir() {
+			v.AddConfigPath(candidate)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
 }
 
 func InitConfig() {

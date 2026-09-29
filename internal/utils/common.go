@@ -20,10 +20,14 @@ func GenerateRandomString(length int) (string, error) {
 }
 
 func RespondError(c *gin.Context, code int, errid string, err error) {
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
 	c.JSON(code, gin.H{
 		"status":  code,
 		"errid":   errid,
-		"message": err.Error(),
+		"message": message,
 	})
 }
 
@@ -59,4 +63,23 @@ func IsValidImageType(filename string) bool {
 		}
 	}
 	return false
+}
+
+// TruncateString 截取字符串到指定长度，如果超出则添加省略号
+func TruncateString(str string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+
+	// 如果字符串长度小于等于最大长度，直接返回
+	if len(str) <= maxLen {
+		return str
+	}
+
+	// 如果字符串长度小于最大长度，也包括省略号的空间
+	if maxLen <= 3 {
+		return str[:maxLen]
+	}
+
+	return str[:maxLen-3] + "..."
 }

@@ -2,6 +2,7 @@ package handles
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,8 +11,15 @@ import (
 	"pkuphysu-backend/internal/utils"
 	"strconv"
 
+	"image/color"
+	_ "image/jpeg"
+	"image/png"
+	_ "image/png"
+
 	"github.com/gin-gonic/gin"
+	"github.com/nfnt/resize"
 	"github.com/pkg/errors"
+	"github.com/rrivera/identicon"
 )
 
 func CreateUser(c *gin.Context) {
@@ -166,13 +174,37 @@ func GetAvatar(c *gin.Context) {
 
 	avatarDir := "./data/avatar"
 	filePath := filepath.Join(avatarDir, userID)
+	imgFile, err := os.Open(filePath)
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		utils.RespondError(c, 404, "avatar_not_found", errors.New("avatar not found"))
+	if err != nil {
+		ig, _ := identicon.New(
+			"github", // Namespace
+			5,        // Number of blocks (Size)
+			3,        // Density
+			identicon.SetBackgroundColorFunction(func([]byte, color.Color) color.Color {
+				return color.Transparent
+			}),
+		)
+		ii, _ := ig.Draw(userID)
+		c.Header("Content-Type", "image/png")
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		_ = ii.Png(300, c.Writer)
 		return
 	}
 
-	c.File(filePath)
+	defer imgFile.Close()
+
+	src, _, err := image.Decode(imgFile)
+	if err != nil {
+		utils.RespondError(c, 500, "failed_to_decode_avatar", err)
+		return
+	}
+	resizedImg := resize.Resize(200, 200, src, resize.Lanczos3)
+	c.Header("Content-Type", "image/png")
+	if err := png.Encode(c.Writer, resizedImg); err != nil {
+		utils.RespondError(c, 500, "failed_to_encode_avatar", err)
+		return
+	}
 }
 
 func ListUsers(c *gin.Context) {

@@ -36,3 +36,17 @@ FROM = "your-email@example.com"
 REQUESTS_PER_SECOND = 10
 BURST = 20
 BLOCK_DURATION = 300
+
+[moderation]
+ENABLED = false
+# true: 新帖子和评论先进入待审核状态，审核通过后才公开（先审后发）
+# false: 不经过审核，发布即可见
+REVIEW_REQUIRED = true
+BASE_URL = "https://open.bigmodel.cn/api/paas/v4/moderations"
+TOKEN = ""
+SENSITIVE_WORDS = []
+TIMEOUT = "5s"
+RETRY_INTERVAL = "30s"
+QUEUE_SIZE = 128
+BATCH_SIZE = 20
+REPORT_THRESHOLD = 3
