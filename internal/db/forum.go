@@ -101,6 +101,38 @@ func GetForumComments(pid string, cursor int, limit int, sort string, userID uin
 	return comments, err
 }
 
+// GetLatestCommentsByPostIDs 返回各帖子最新 limit 条可见评论（按时间正序），供帖子列表预览
+func GetLatestCommentsByPostIDs(postIDs []uint, viewerID uint, limit int) (map[uint][]model.ForumComment, error) {
+	result := make(map[uint][]model.ForumComment, len(postIDs))
+
+	var visiblePostIDs []uint
+	if err := db.Model(&model.ForumPost{}).
+		Where("id IN ?", postIDs).
+		Where(forumPostVisibleToUserQuery(viewerID), viewerID).
+		Pluck("id", &visiblePostIDs).Error; err != nil {
+		return nil, err
+	}
+
+	for _, postID := range visiblePostIDs {
+		comments := make([]model.ForumComment, 0, limit)
+		err := db.Preload("User").Preload("Quote.User").
+			Where("post_id = ?", postID).
+			Where(forumCommentVisibleToUserQuery(viewerID), viewerID).
+			Order("id DESC").Limit(limit).
+			Find(&comments).Error
+		if err != nil {
+			return nil, err
+		}
+
+		// 取最新的 limit 条后翻转为时间正序，便于前端直接渲染
+		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
+			comments[i], comments[j] = comments[j], comments[i]
+		}
+		result[postID] = comments
+	}
+	return result, nil
+}
+
 // CreateForumComment 创建评论
 func CreateForumComment(comment *model.ForumComment) error {
 	comment.ContentHTML = utils.MarkdownToHtml(comment.Content)
@@ -414,6 +446,15 @@ func GetUserCommentLikeStatus(userID, commentID uint) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// GetUserLikedCommentIDs 批量获取用户点赞过的评论ID
+func GetUserLikedCommentIDs(userID uint, commentIDs []uint) ([]uint, error) {
+	var likedIDs []uint
+	err := db.Model(&model.CommentLike{}).
+		Where("user_id = ? AND comment_id IN ?", userID, commentIDs).
+		Pluck("comment_id", &likedIDs).Error
+	return likedIDs, err
 }
 
 // LikeComment 点赞评论

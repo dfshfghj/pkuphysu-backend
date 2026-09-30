@@ -17,8 +17,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// 每个帖子允许的最大修改次数
-const maxForumPostEdits = 3
+const (
+	// 每个帖子允许的最大修改次数
+	maxForumPostEdits = 3
+	// 帖子列表附带的评论：每个帖子的默认/最大条数
+	defaultCommentLimit = 3
+	maxCommentLimit     = 10
+)
 
 // 新内容的初始状态：REVIEW_REQUIRED = true 时先审后发，false 时直接发布
 func initialForumContentStatus() string {
@@ -161,6 +166,19 @@ func GetPosts(c *gin.Context) {
 		return
 	}
 
+	commentLimit, err := strconv.Atoi(c.DefaultQuery("comment_limit", strconv.Itoa(defaultCommentLimit)))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+	if commentLimit < 0 {
+		utils.RespondError(c, 400, "InvalidParam", errors.New("comment_limit 不能为负数"))
+		return
+	}
+	if commentLimit > maxCommentLimit {
+		commentLimit = maxCommentLimit
+	}
+
 	var tags []string
 	if c.Request.URL.Query().Has("tag") {
 		tags = c.QueryArray("tag")
@@ -216,6 +234,37 @@ func GetPosts(c *gin.Context) {
 		}
 	}
 
+	// 每个帖子附带最新的若干条可见评论
+	commentsByPost := make(map[uint][]model.ForumComment)
+	likedCommentIDs := make(map[uint]bool)
+	if commentLimit > 0 {
+		postIDs := make([]uint, len(posts))
+		for i, post := range posts {
+			postIDs[i] = post.ID
+		}
+
+		commentsByPost, err = db.GetLatestCommentsByPostIDs(postIDs, userID, commentLimit)
+		if err != nil {
+			utils.RespondError(c, 500, "ServerError", err)
+			return
+		}
+
+		// 批量查询当前用户的评论点赞状态，避免逐条查询
+		allCommentIDs := make([]uint, 0, len(posts)*commentLimit)
+		for _, comments := range commentsByPost {
+			for _, comment := range comments {
+				allCommentIDs = append(allCommentIDs, comment.ID)
+			}
+		}
+		if len(allCommentIDs) > 0 {
+			if ids, err := db.GetUserLikedCommentIDs(userID, allCommentIDs); err == nil {
+				for _, id := range ids {
+					likedCommentIDs[id] = true
+				}
+			}
+		}
+	}
+
 	postData := make([]map[string]interface{}, len(posts))
 	for i, post := range posts {
 		isFollow := 0
@@ -248,6 +297,7 @@ func GetPosts(c *gin.Context) {
 			"userid":     post.User.ID,
 			"username":   post.User.Username,
 			"edit_count": post.EditCount,
+			"comments":   latestCommentPayloads(commentsByPost[post.ID], likedCommentIDs, userID),
 		}
 	}
 
@@ -321,6 +371,31 @@ func GetComments(c *gin.Context) {
 	}
 
 	utils.RespondSuccess(c, commentData)
+}
+
+// latestCommentPayloads 构建帖子列表中评论预览的响应数据
+func latestCommentPayloads(comments []model.ForumComment, likedIDs map[uint]bool, viewerID uint) []map[string]interface{} {
+	items := make([]map[string]interface{}, len(comments))
+	for i := range comments {
+		comment := &comments[i]
+		isLike := 0
+		if likedIDs[comment.ID] {
+			isLike = 1
+		}
+		items[i] = map[string]interface{}{
+			"cid":       comment.ID,
+			"pid":       comment.PostID,
+			"text":      comment.ContentHTML,
+			"quote":     quotePayloadForViewer(comment, viewerID),
+			"timestamp": comment.CreatedAt.Unix(),
+			"userid":    comment.User.ID,
+			"username":  comment.User.Username,
+			"status":    comment.Status,
+			"likenum":   comment.Likenum,
+			"is_like":   isLike,
+		}
+	}
+	return items
 }
 
 func SubmitComment(c *gin.Context) {
