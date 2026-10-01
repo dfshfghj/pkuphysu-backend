@@ -2,6 +2,7 @@ package model
 
 var Models = []interface{}{
 	&User{},
+	&UserProfile{},
 	&EmailVerification{},
 	&ForumPost{},
 	&ForumPostVersion{},

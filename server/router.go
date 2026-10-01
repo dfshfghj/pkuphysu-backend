@@ -60,6 +60,11 @@ func Init(e *gin.Engine) {
 	g.GET("/users", handles.ListUsers)
 	g.GET("/admins", handles.ListAdmins)
 
+	g.GET("/users/:id/profile", handles.GetUserProfile)
+	g.GET("/users/:id/stats", handles.GetUserStats)
+	g.GET("/user/me/profile", handles.GetMyProfileRaw)
+	g.PUT("/user/me/profile", handles.UpdateMyProfile)
+
 	g.GET("/notifications", handles.GetNotifications)
 
 	g.GET("/forum/posts", handles.GetPosts)
