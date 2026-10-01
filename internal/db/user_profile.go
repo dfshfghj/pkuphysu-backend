@@ -62,7 +62,6 @@ func GetUserForumStats(userID uint, viewerID uint) (postCount int64, commentCoun
 		return 0, 0, 0, errors.Wrap(err, "failed to count user comments")
 	}
 
-	// COALESCE 保证该用户没有帖子时返回 0 而不是 NULL
 	if err = db.Model(&model.ForumPost{}).
 		Where("user_id = ?", userID).
 		Where(forumPostVisibleToUserQuery(viewerID), viewerID).

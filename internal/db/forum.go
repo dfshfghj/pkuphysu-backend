@@ -398,6 +398,16 @@ func GetForumPostsByIDs(postIDs []uint) ([]model.ForumPost, error) {
 	return posts, err
 }
 
+// GetForumPostsByIDsForViewer 按 ID 批量获取帖子，只返回对 viewerID 可见的那些
+func GetForumPostsByIDsForViewer(postIDs []uint, viewerID uint) ([]model.ForumPost, error) {
+	var posts []model.ForumPost
+	err := db.Preload("User").
+		Where("id IN ?", postIDs).
+		Where(forumPostVisibleToUserQuery(viewerID), viewerID).
+		Find(&posts).Error
+	return posts, err
+}
+
 // GetUserLikeStatus 检查用户是否点赞特定帖子
 func GetUserLikeStatus(userID, postID uint) (bool, error) {
 	var count int64

@@ -9,8 +9,7 @@ import (
 // MaxUserProfileContentLength 用户主页自定义区块允许的最大字符数（按 rune 计）
 const MaxUserProfileContentLength = 5000
 
-// UserProfile 用户主页的自定义内容。目前是一段自由 Markdown 区块，
-// 由用户本人编辑，渲染并清洗后展示在其主页上。
+// UserProfile 用户主页的自定义内容
 type UserProfile struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	UserID      uint   `json:"user_id" gorm:"uniqueIndex;constraint:OnDelete:CASCADE;"`
