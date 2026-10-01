@@ -73,7 +73,6 @@ func GetUserProfile(c *gin.Context) {
 		profileData["updated_at"] = profile.UpdatedAt.Unix()
 	}
 
-	// 批量查询当前用户对这些帖子的关注/点赞状态，避免逐条查询
 	followedPostMap := make(map[uint]bool)
 	likedPostMap := make(map[uint]bool)
 	if len(posts) > 0 {
@@ -123,8 +122,7 @@ func GetUserProfile(c *gin.Context) {
 	})
 }
 
-// GetUserStats 获取用户的公开统计（帖子数、评论数、获赞数）。
-// 供头像悬浮卡这类只需要计数的轻量场景使用，避免拉取整个主页数据。
+// GetUserStats 获取用户的公开统计（帖子数、评论数、获赞数）
 func GetUserStats(c *gin.Context) {
 	targetID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {

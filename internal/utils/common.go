@@ -71,15 +71,18 @@ func TruncateString(str string, maxLen int) string {
 		return ""
 	}
 
-	// 如果字符串长度小于等于最大长度，直接返回
-	if len(str) <= maxLen {
+	runes := []rune(str)
+
+	// 如果字符数不超过最大长度，直接返回
+	if len(runes) <= maxLen {
 		return str
 	}
 
-	// 如果字符串长度小于最大长度，也包括省略号的空间
-	if maxLen <= 3 {
-		return str[:maxLen]
+	// 省略号本身也要占长度
+	const ellipsis = "..."
+	if maxLen <= len(ellipsis) {
+		return string(runes[:maxLen])
 	}
 
-	return str[:maxLen-3] + "..."
+	return string(runes[:maxLen-len(ellipsis)]) + ellipsis
 }

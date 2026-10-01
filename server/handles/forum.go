@@ -23,6 +23,9 @@ const (
 	// 帖子列表附带的评论：每个帖子的默认/最大条数
 	defaultCommentLimit = 3
 	maxCommentLimit     = 10
+	// 正文引用卡片：单次最多解析的帖子数、摘要的最大字符数
+	maxPostQuoteIDs        = 50
+	postQuoteExcerptLength = 120
 )
 
 // 新内容的初始状态：REVIEW_REQUIRED = true 时先审后发，false 时直接发布
@@ -1333,6 +1336,83 @@ func GetRawPost(c *gin.Context) {
 	}
 
 	utils.RespondSuccess(c, rawData)
+}
+
+// parsePostQuoteIDs 解析引用卡片的 ids 参数（逗号分隔）：去重、跳过非法值、限制数量
+func parsePostQuoteIDs(raw string) []uint {
+	ids := make([]uint, 0, 8)
+	seen := make(map[uint]bool)
+
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		value, err := strconv.ParseUint(part, 10, 32)
+		if err != nil || value == 0 {
+			continue
+		}
+
+		id := uint(value)
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+
+		if len(ids) >= maxPostQuoteIDs {
+			break
+		}
+	}
+
+	return ids
+}
+
+// GetPostQuotes 批量返回被引用帖子的作者与摘要，供正文里的引用卡片渲染
+func GetPostQuotes(c *gin.Context) {
+	ids := parsePostQuoteIDs(c.Query("ids"))
+	if len(ids) == 0 {
+		utils.RespondSuccess(c, []map[string]interface{}{})
+		return
+	}
+
+	viewerID := c.MustGet("CurrentUser").(*model.User).ID
+
+	posts, err := db.GetForumPostsByIDsForViewer(ids, viewerID)
+	if err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	visible := make(map[uint]model.ForumPost, len(posts))
+	for _, post := range posts {
+		visible[post.ID] = post
+	}
+
+	result := make([]map[string]interface{}, 0, len(ids))
+	for _, id := range ids {
+		post, ok := visible[id]
+		if !ok || post.User == nil {
+			result = append(result, map[string]interface{}{
+				"id":        id,
+				"available": false,
+			})
+			continue
+		}
+
+		result = append(result, map[string]interface{}{
+			"id":        post.ID,
+			"available": true,
+			"userid":    post.User.ID,
+			"username":  post.User.Username,
+			"text":      post.ContentHTML,
+			"excerpt":   utils.TruncateString(strings.Join(strings.Fields(post.ContentText), " "), postQuoteExcerptLength),
+			"timestamp": post.CreatedAt.Unix(),
+		})
+	}
+
+	utils.RespondSuccess(c, result)
 }
 
 func GetRawComment(c *gin.Context) {

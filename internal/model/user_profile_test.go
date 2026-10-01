@@ -28,7 +28,6 @@ func TestValidateUserProfileContent(t *testing.T) {
 		},
 		{
 			name: "length counts runes instead of bytes",
-			// 每个汉字占 3 字节，按字节计会误判为超长
 			content: strings.Repeat("京", MaxUserProfileContentLength),
 			wantErr: false,
 		},
