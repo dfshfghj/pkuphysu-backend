@@ -277,31 +277,36 @@ func GetPosts(c *gin.Context) {
 			isLike = 1
 		}
 
-		tags := make([]string, len(post.Tags))
-		for j, tag := range post.Tags {
-			tags[j] = tag.Name
-		}
-
-		postData[i] = map[string]interface{}{
-			"id":         post.ID,
-			"text":       post.ContentHTML,
-			"type":       post.Type,
-			"timestamp":  post.CreatedAt.Unix(),
-			"follownum":  post.Follownum,
-			"likenum":    post.Likenum,
-			"reply":      post.Reply,
-			"tags":       tags,
-			"status":     post.Status,
-			"is_follow":  isFollow,
-			"is_like":    isLike,
-			"userid":     post.User.ID,
-			"username":   post.User.Username,
-			"edit_count": post.EditCount,
-			"comments":   latestCommentPayloads(commentsByPost[post.ID], likedCommentIDs, userID),
-		}
+		postData[i] = forumPostSummary(post, isFollow, isLike)
+		postData[i]["comments"] = latestCommentPayloads(commentsByPost[post.ID], likedCommentIDs, userID)
 	}
 
 	utils.RespondSuccess(c, postData)
+}
+
+// forumPostSummary 构建帖子列表中的单条帖子数据（不含评论预览），供帖子列表与用户主页复用
+func forumPostSummary(post model.ForumPost, isFollow int, isLike int) map[string]interface{} {
+	tags := make([]string, len(post.Tags))
+	for i, tag := range post.Tags {
+		tags[i] = tag.Name
+	}
+
+	return map[string]interface{}{
+		"id":         post.ID,
+		"text":       post.ContentHTML,
+		"type":       post.Type,
+		"timestamp":  post.CreatedAt.Unix(),
+		"follownum":  post.Follownum,
+		"likenum":    post.Likenum,
+		"reply":      post.Reply,
+		"tags":       tags,
+		"status":     post.Status,
+		"is_follow":  isFollow,
+		"is_like":    isLike,
+		"userid":     post.User.ID,
+		"username":   post.User.Username,
+		"edit_count": post.EditCount,
+	}
 }
 
 func GetComments(c *gin.Context) {
