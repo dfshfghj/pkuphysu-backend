@@ -25,6 +25,7 @@ func Init(e *gin.Engine) {
 	wechat.Init()
 
 	e.Use(middlewares.RateLimit())
+	Cors(e)
 
 	e.POST("/auth/login", handles.Login)
 	e.POST("/iaaa/login", handles.IaaaLogin)
@@ -99,8 +100,6 @@ func Init(e *gin.Engine) {
 
 	we := e.Group("/wechat")
 	we.Any("", handles.Message)
-
-	Cors(e)
 }
 
 func Cors(e *gin.Engine) {
