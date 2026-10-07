@@ -58,6 +58,29 @@ func GetUsers() ([]model.User, error) {
 	return users, nil
 }
 
+func SearchUsersByUsername(keyword string, limit int) ([]model.User, error) {
+	var users []model.User
+	if err := db.Select("id, username, verified").
+		Where("disabled = ?", false).
+		Where("username ILIKE ?", keyword+"%").
+		Order("id ASC").Limit(limit).Find(&users).Error; err != nil {
+		return nil, errors.Wrapf(err, "failed to search users")
+	}
+	return users, nil
+}
+
+func GetExistingUserIDs(ids []uint) ([]uint, error) {
+	if len(ids) == 0 {
+		return []uint{}, nil
+	}
+
+	var existing []uint
+	if err := db.Model(&model.User{}).Where("id IN ?", ids).Pluck("id", &existing).Error; err != nil {
+		return nil, errors.Wrapf(err, "failed to get existing user ids")
+	}
+	return existing, nil
+}
+
 func GetUsersByRole(role int) ([]model.User, error) {
 	var users []model.User
 	if err := db.Select("id, username, verified, stuname, stuid, role, disabled, bio").Where("role = ?", role).Find(&users).Error; err != nil {

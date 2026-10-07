@@ -58,6 +58,7 @@ func Init(e *gin.Engine) {
 	e.GET("/user/avatar/:id", handles.GetAvatar)
 	g.POST("/auth/change-password", handles.ChangePassword)
 	g.GET("/users", handles.ListUsers)
+	g.GET("/users/search", handles.SearchUsers)
 	g.GET("/admins", handles.ListAdmins)
 
 	g.GET("/users/:id/profile", handles.GetUserProfile)
