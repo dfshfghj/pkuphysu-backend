@@ -32,6 +32,7 @@ type ForumPost struct {
 	Comments     []ForumComment `gorm:"foreignKey:PostID"`
 	Tags         []ForumTag     `gorm:"many2many:forum_post_tags;"`
 	Poll         *ForumPoll     `gorm:"foreignKey:PostID"`
+	Survey       *ForumSurvey   `gorm:"foreignKey:PostID"`
 }
 
 // ForumPoll 帖子附带的投票，每个帖子最多一个

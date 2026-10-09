@@ -184,7 +184,8 @@ func GetPost(c *gin.Context) {
 		return
 	}
 
-	userID := c.MustGet("CurrentUser").(*model.User).ID
+	currentUser := c.MustGet("CurrentUser").(*model.User)
+	userID := currentUser.ID
 	if !canViewForumContent(post.Status, post.UserID, userID) {
 		utils.RespondError(c, 404, "NotFound", nil)
 		return
@@ -229,6 +230,16 @@ func GetPost(c *gin.Context) {
 		postData["poll"] = buildPollPayload(views[post.ID])
 	} else {
 		postData["poll"] = nil
+	}
+
+	if survey, err := db.GetForumSurveyByPostID(post.ID); err == nil {
+		responseCount, countErr := db.GetSurveyResponseCount(survey.ID)
+		if countErr != nil {
+			logrus.WithError(countErr).Warn("failed to count survey responses")
+		}
+		postData["survey"] = buildSurveyMetaPayload(survey, responseCount, currentUser.ID, currentUser.IsAdmin())
+	} else {
+		postData["survey"] = nil
 	}
 
 	utils.RespondSuccess(c, postData)
@@ -284,7 +295,8 @@ func GetPosts(c *gin.Context) {
 
 	var posts []model.ForumPost
 
-	userID := c.MustGet("CurrentUser").(*model.User).ID
+	currentUser := c.MustGet("CurrentUser").(*model.User)
+	userID := currentUser.ID
 
 	posts, err = db.GetForumPosts(cursor, limit, tags, keywords, userID)
 	if err != nil {
@@ -363,6 +375,7 @@ func GetPosts(c *gin.Context) {
 	}
 
 	attachPolls(postData, posts, userID)
+	attachSurveys(postData, posts, currentUser)
 
 	utils.RespondSuccess(c, postData)
 }
@@ -555,6 +568,7 @@ func SubmitPost(c *gin.Context) {
 			Multiple bool     `json:"multiple"`
 			Options  []string `json:"options"`
 		} `json:"poll"`
+		Survey *surveyInput `json:"survey"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -590,12 +604,24 @@ func SubmitPost(c *gin.Context) {
 		poll = &model.ForumPoll{Multiple: multiple, Options: pollOptions}
 	}
 
+	var survey *model.ForumSurvey
+	if req.Survey != nil {
+		normalized, err := normalizeSurveyInput(*req.Survey)
+		if err != nil {
+			utils.RespondError(c, 400, "InvalidSurvey", err)
+			return
+		}
+		normalized.UserID = currentUser.ID
+		survey = normalized
+	}
+
 	post := model.ForumPost{
 		Content: req.Text,
 		Status:  initialForumContentStatus(),
 		UserID:  currentUser.ID,
 		Tags:    tags,
 		Poll:    poll,
+		Survey:  survey,
 	}
 
 	err := db.CreateForumPost(&post)
@@ -815,6 +841,7 @@ func GetFollowedPosts(c *gin.Context) {
 	}
 
 	attachPolls(postData, posts, currentUser.ID)
+	attachSurveys(postData, posts, currentUser)
 
 	utils.RespondSuccess(c, postData)
 }
