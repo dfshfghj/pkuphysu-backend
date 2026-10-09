@@ -20,27 +20,23 @@ type VerifyEmailRequest struct {
 	Code  string `json:"code" binding:"required"`
 }
 
-func isValidPkuStudentEmail(email string) bool {
-	if !strings.HasSuffix(email, "@stu.pku.edu.cn") {
-		return false
-	}
-
+func isValidPkuEmail(email string) bool {
 	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
+	if len(parts) != 2 || parts[0] == "" {
 		return false
 	}
 
-	stuid := parts[0]
-	if stuid == "" {
+	matched, err := regexp.MatchString(`^\d+$`, parts[0])
+	if err != nil || !matched {
 		return false
 	}
 
-	matched, err := regexp.MatchString(`^\d+$`, stuid)
-	if err != nil {
+	switch parts[1] {
+	case "stu.pku.edu.cn", "pku.edu.cn":
+		return true
+	default:
 		return false
 	}
-
-	return matched
 }
 
 func extractStuidFromEmail(email string) string {
@@ -55,8 +51,8 @@ func SendVerificationEmail(c *gin.Context) {
 	}
 
 	// 验证邮箱是否为北大邮箱
-	if !isValidPkuStudentEmail(req.Email) {
-		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be @stu.pku.edu.cn domain with numeric student ID"))
+	if !isValidPkuEmail(req.Email) {
+		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be a numeric student ID followed by @stu.pku.edu.cn or @pku.edu.cn"))
 		return
 	}
 
@@ -86,8 +82,8 @@ func VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	if !isValidPkuStudentEmail(req.Email) {
-		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be @stu.pku.edu.cn domain with numeric student ID"))
+	if !isValidPkuEmail(req.Email) {
+		utils.RespondError(c, 400, "invalid_email_domain", errors.New("email must be a numeric student ID followed by @stu.pku.edu.cn or @pku.edu.cn"))
 		return
 	}
 
