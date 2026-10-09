@@ -225,6 +225,12 @@ func GetPost(c *gin.Context) {
 		"edited_at":      editedAtUnix(post.LastEditedAt),
 	}
 
+	if views, err := db.GetForumPollViews([]uint{post.ID}, userID); err == nil {
+		postData["poll"] = buildPollPayload(views[post.ID])
+	} else {
+		postData["poll"] = nil
+	}
+
 	utils.RespondSuccess(c, postData)
 }
 
@@ -355,6 +361,8 @@ func GetPosts(c *gin.Context) {
 		postData[i] = forumPostSummary(post, isFollow, isLike)
 		postData[i]["comments"] = latestCommentPayloads(commentsByPost[post.ID], likedCommentIDs, userID)
 	}
+
+	attachPolls(postData, posts, userID)
 
 	utils.RespondSuccess(c, postData)
 }
@@ -543,6 +551,10 @@ func SubmitPost(c *gin.Context) {
 	var req struct {
 		Text string   `json:"text"`
 		Tags []string `json:"tags"`
+		Poll *struct {
+			Multiple bool     `json:"multiple"`
+			Options  []string `json:"options"`
+		} `json:"poll"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -564,11 +576,26 @@ func SubmitPost(c *gin.Context) {
 		}
 	}
 
+	var poll *model.ForumPoll
+	if req.Poll != nil {
+		multiple, options, err := normalizePollInput(req.Poll.Multiple, req.Poll.Options)
+		if err != nil {
+			utils.RespondError(c, 400, "InvalidPoll", err)
+			return
+		}
+		pollOptions := make([]model.ForumPollOption, len(options))
+		for i, text := range options {
+			pollOptions[i] = model.ForumPollOption{Text: text, Position: i}
+		}
+		poll = &model.ForumPoll{Multiple: multiple, Options: pollOptions}
+	}
+
 	post := model.ForumPost{
 		Content: req.Text,
 		Status:  initialForumContentStatus(),
 		UserID:  currentUser.ID,
 		Tags:    tags,
+		Poll:    poll,
 	}
 
 	err := db.CreateForumPost(&post)
@@ -786,6 +813,8 @@ func GetFollowedPosts(c *gin.Context) {
 			"edit_count": post.EditCount,
 		}
 	}
+
+	attachPolls(postData, posts, currentUser.ID)
 
 	utils.RespondSuccess(c, postData)
 }

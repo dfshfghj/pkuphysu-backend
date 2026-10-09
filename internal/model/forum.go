@@ -31,6 +31,32 @@ type ForumPost struct {
 	User         *User
 	Comments     []ForumComment `gorm:"foreignKey:PostID"`
 	Tags         []ForumTag     `gorm:"many2many:forum_post_tags;"`
+	Poll         *ForumPoll     `gorm:"foreignKey:PostID"`
+}
+
+// ForumPoll 帖子附带的投票，每个帖子最多一个
+type ForumPoll struct {
+	ID        uint `gorm:"primaryKey"`
+	PostID    uint `gorm:"uniqueIndex;constraint:OnDelete:CASCADE;"`
+	Multiple  bool
+	CreatedAt time.Time
+	Options   []ForumPollOption `gorm:"foreignKey:PollID"`
+}
+
+type ForumPollOption struct {
+	ID        uint `gorm:"primaryKey"`
+	PollID    uint `gorm:"index;constraint:OnDelete:CASCADE;"`
+	Text      string
+	Position  int
+	CreatedAt time.Time
+}
+
+type ForumPollVote struct {
+	ID        uint `gorm:"primaryKey"`
+	PollID    uint `gorm:"index;constraint:OnDelete:CASCADE;"`
+	OptionID  uint `gorm:"uniqueIndex:idx_poll_vote_user_option;constraint:OnDelete:CASCADE;"`
+	UserID    uint `gorm:"uniqueIndex:idx_poll_vote_user_option;constraint:OnDelete:CASCADE;"`
+	CreatedAt time.Time
 }
 
 // ForumPostVersion 保存帖子被修改前的历史内容快照

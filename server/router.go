@@ -78,6 +78,7 @@ func Init(e *gin.Engine) {
 	g.DELETE("/forum/comments/:id", handles.DeleteOwnComment)
 	g.POST("/forum/comments", handles.SubmitComment)
 	g.POST("/forum/posts", handles.SubmitPost)
+	g.POST("/forum/posts/:id/vote", handles.VotePost)
 	g.POST("/forum/posts/:id/report", handles.ReportPost)
 	g.POST("/forum/comments/:id/report", handles.ReportComment)
 	g.GET("/forum/follow", handles.GetFollowedPosts)

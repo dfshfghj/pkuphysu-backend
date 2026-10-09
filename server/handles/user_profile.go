@@ -103,6 +103,8 @@ func GetUserProfile(c *gin.Context) {
 		postData[i] = forumPostSummary(post, isFollow, isLike)
 	}
 
+	attachPolls(postData, posts, viewerID)
+
 	utils.RespondSuccess(c, gin.H{
 		"user": gin.H{
 			"id":       target.ID,

@@ -599,6 +599,25 @@ func DeleteForumPostByID(postID uint) error {
 		return err
 	}
 
+	var poll model.ForumPoll
+	if err := tx.Where("post_id = ?", postID).First(&poll).Error; err == nil {
+		if err := tx.Where("poll_id = ?", poll.ID).Delete(&model.ForumPollVote{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("poll_id = ?", poll.ID).Delete(&model.ForumPollOption{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("id = ?", poll.ID).Delete(&model.ForumPoll{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		tx.Rollback()
+		return err
+	}
+
 	var comments []model.ForumComment
 	if err := tx.Where("post_id = ?", postID).Find(&comments).Error; err != nil {
 		tx.Rollback()
