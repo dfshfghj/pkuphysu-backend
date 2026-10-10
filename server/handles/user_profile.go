@@ -32,7 +32,8 @@ func GetUserProfile(c *gin.Context) {
 		return
 	}
 
-	viewerID := c.MustGet("CurrentUser").(*model.User).ID
+	viewer := c.MustGet("CurrentUser").(*model.User)
+	viewerID := viewer.ID
 
 	limit, err := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(defaultProfilePostLimit)))
 	if err != nil || limit <= 0 {
@@ -102,6 +103,9 @@ func GetUserProfile(c *gin.Context) {
 		}
 		postData[i] = forumPostSummary(post, isFollow, isLike)
 	}
+
+	attachPolls(postData, posts, viewerID)
+	attachSurveys(postData, posts, viewer)
 
 	utils.RespondSuccess(c, gin.H{
 		"user": gin.H{

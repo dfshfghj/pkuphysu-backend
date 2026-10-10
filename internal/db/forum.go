@@ -599,6 +599,59 @@ func DeleteForumPostByID(postID uint) error {
 		return err
 	}
 
+	var poll model.ForumPoll
+	if err := tx.Where("post_id = ?", postID).First(&poll).Error; err == nil {
+		if err := tx.Where("poll_id = ?", poll.ID).Delete(&model.ForumPollVote{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("poll_id = ?", poll.ID).Delete(&model.ForumPollOption{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("id = ?", poll.ID).Delete(&model.ForumPoll{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		tx.Rollback()
+		return err
+	}
+
+	var survey model.ForumSurvey
+	if err := tx.Where("post_id = ?", postID).First(&survey).Error; err == nil {
+		var responses []model.ForumSurveyResponse
+		if err := tx.Where("survey_id = ?", survey.ID).Find(&responses).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		responseIDs := make([]uint, len(responses))
+		for i, response := range responses {
+			responseIDs[i] = response.ID
+		}
+		if len(responseIDs) > 0 {
+			if err := tx.Where("response_id IN ?", responseIDs).Delete(&model.ForumSurveyAnswer{}).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		if err := tx.Where("survey_id = ?", survey.ID).Delete(&model.ForumSurveyResponse{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("survey_id = ?", survey.ID).Delete(&model.ForumSurveyBlock{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("id = ?", survey.ID).Delete(&model.ForumSurvey{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		tx.Rollback()
+		return err
+	}
+
 	var comments []model.ForumComment
 	if err := tx.Where("post_id = ?", postID).Find(&comments).Error; err != nil {
 		tx.Rollback()
