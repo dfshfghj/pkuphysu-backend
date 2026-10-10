@@ -33,9 +33,9 @@ func Login(c *gin.Context) {
 	var err error
 
 	if strings.Contains(req.Username, "@") {
-		if !isValidPkuStudentEmail(req.Username) {
+		if !isValidPkuEmail(req.Username) {
 			utils.RespondError(c, http.StatusBadRequest, "invalid_email_format",
-				fmt.Errorf("邮箱必须是@stu.pku.edu.cn域名，且前缀必须是学号"))
+				fmt.Errorf("邮箱必须是「数字学号@stu.pku.edu.cn」或「数字学号@pku.edu.cn」"))
 			return
 		}
 
