@@ -43,6 +43,12 @@ func StaticFile(c *gin.Context) {
 		return
 	}
 
+	if strings.HasPrefix(filename, "/files/") || strings.HasPrefix(filename, "files/") {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		c.Header("Cache-Control", "public, max-age=86400")
+	}
+
 	c.File(filePath)
 }
 
