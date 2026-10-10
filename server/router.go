@@ -68,6 +68,9 @@ func Init(e *gin.Engine) {
 	g.PUT("/user/me/profile", handles.UpdateMyProfile)
 
 	g.GET("/notifications", handles.GetNotifications)
+	g.GET("/notifications/unread-count", handles.GetUnreadNotificationCount)
+	g.PUT("/notifications/read-all", handles.MarkAllNotificationsRead)
+	g.PUT("/notifications/:id/read", handles.MarkNotificationRead)
 
 	g.GET("/forum/posts", handles.GetPosts)
 	g.GET("/forum/posts/:id", handles.GetPost)

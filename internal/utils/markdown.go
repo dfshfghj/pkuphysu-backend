@@ -12,10 +12,12 @@ import (
 
 func MarkdownToHtml(markdown string) string {
 	luteEngine := lute.New()
+	luteEngine.SetInlineMathAllowDigitAfterOpenMarker(true)
 	html := luteEngine.MarkdownStr("", markdown)
 	p := bluemonday.UGCPolicy()
-	p.AllowElements("iframe")
+	p.AllowElements("iframe", "input")
 	p.AllowAttrs("src", "href", "style", "class", "id").Globally()
+	p.AllowAttrs("type", "checked", "disabled").OnElements("input")
 	html = p.Sanitize(html)
 	log.Debug("markdown: ", markdown)
 	log.Debug("html: ", html)

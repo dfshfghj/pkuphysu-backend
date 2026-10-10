@@ -242,6 +242,22 @@ func GetPost(c *gin.Context) {
 		postData["survey"] = nil
 	}
 
+	commentLimit, err := strconv.Atoi(c.DefaultQuery("comment_limit", strconv.Itoa(defaultCommentLimit)))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+	if commentLimit < 0 {
+		commentLimit = 0
+	}
+	if commentLimit > maxCommentLimit {
+		commentLimit = maxCommentLimit
+	}
+	if err := attachCommentPreviews([]map[string]interface{}{postData}, []model.ForumPost{*post}, userID, commentLimit); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
 	utils.RespondSuccess(c, postData)
 }
 
@@ -328,36 +344,6 @@ func GetPosts(c *gin.Context) {
 	}
 
 	// 每个帖子附带最新的若干条可见评论
-	commentsByPost := make(map[uint][]model.ForumComment)
-	likedCommentIDs := make(map[uint]bool)
-	if commentLimit > 0 {
-		postIDs := make([]uint, len(posts))
-		for i, post := range posts {
-			postIDs[i] = post.ID
-		}
-
-		commentsByPost, err = db.GetLatestCommentsByPostIDs(postIDs, userID, commentLimit)
-		if err != nil {
-			utils.RespondError(c, 500, "ServerError", err)
-			return
-		}
-
-		// 批量查询当前用户的评论点赞状态，避免逐条查询
-		allCommentIDs := make([]uint, 0, len(posts)*commentLimit)
-		for _, comments := range commentsByPost {
-			for _, comment := range comments {
-				allCommentIDs = append(allCommentIDs, comment.ID)
-			}
-		}
-		if len(allCommentIDs) > 0 {
-			if ids, err := db.GetUserLikedCommentIDs(userID, allCommentIDs); err == nil {
-				for _, id := range ids {
-					likedCommentIDs[id] = true
-				}
-			}
-		}
-	}
-
 	postData := make([]map[string]interface{}, len(posts))
 	for i, post := range posts {
 		isFollow := 0
@@ -371,7 +357,11 @@ func GetPosts(c *gin.Context) {
 		}
 
 		postData[i] = forumPostSummary(post, isFollow, isLike)
-		postData[i]["comments"] = latestCommentPayloads(commentsByPost[post.ID], likedCommentIDs, userID)
+	}
+
+	if err := attachCommentPreviews(postData, posts, userID, commentLimit); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
 	}
 
 	attachPolls(postData, posts, userID)
@@ -497,6 +487,75 @@ func latestCommentPayloads(comments []model.ForumComment, likedIDs map[uint]bool
 		}
 	}
 	return items
+}
+
+// attachCommentPreviews 为帖子列表批量附加最新评论预览（含当前用户的评论点赞状态）
+func attachCommentPreviews(postData []map[string]interface{}, posts []model.ForumPost, viewerID uint, limit int) error {
+	if len(postData) == 0 {
+		return nil
+	}
+
+	if limit <= 0 {
+		for i := range postData {
+			postData[i]["comments"] = []map[string]interface{}{}
+		}
+		return nil
+	}
+
+	postIDs := make([]uint, len(posts))
+	for i, post := range posts {
+		postIDs[i] = post.ID
+	}
+
+	commentsByPost, err := db.GetLatestCommentsByPostIDs(postIDs, viewerID, limit)
+	if err != nil {
+		return err
+	}
+
+	// 批量查询当前用户的评论点赞状态，避免逐条查询
+	likedCommentIDs := make(map[uint]bool)
+	allCommentIDs := make([]uint, 0, len(posts)*limit)
+	for _, comments := range commentsByPost {
+		for _, comment := range comments {
+			allCommentIDs = append(allCommentIDs, comment.ID)
+		}
+	}
+	if len(allCommentIDs) > 0 {
+		if ids, err := db.GetUserLikedCommentIDs(viewerID, allCommentIDs); err == nil {
+			for _, id := range ids {
+				likedCommentIDs[id] = true
+			}
+		}
+	}
+
+	for i, post := range posts {
+		postData[i]["comments"] = latestCommentPayloads(commentsByPost[post.ID], likedCommentIDs, viewerID)
+	}
+	return nil
+}
+
+// notifyOnce 发送去重通知：同一 (接收人, 类型, 发起人, 帖子/评论) 只通知一次，
+// 避免用户反复点赞/取消/再点赞时刷出大量通知。
+func notifyOnce(userID uint, notifType, content string, relatedUserID, relatedPostID, relatedCommentID uint) {
+	if userID == 0 || userID == relatedUserID {
+		return
+	}
+
+	exists, err := db.NotificationExists(userID, notifType, relatedUserID, relatedPostID, relatedCommentID)
+	if err != nil || exists {
+		return
+	}
+
+	_ = db.CreateNotification(&model.Notification{
+		UserID:           userID,
+		Title:            notifType,
+		Content:          content,
+		Type:             notifType,
+		Read:             false,
+		RelatedUserID:    relatedUserID,
+		RelatedPostID:    relatedPostID,
+		RelatedCommentID: relatedCommentID,
+	})
 }
 
 func SubmitComment(c *gin.Context) {
@@ -796,6 +855,19 @@ func GetFollowedPosts(c *gin.Context) {
 		return
 	}
 
+	commentLimit, err := strconv.Atoi(c.DefaultQuery("comment_limit", strconv.Itoa(defaultCommentLimit)))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+	if commentLimit < 0 {
+		utils.RespondError(c, 400, "InvalidParam", errors.New("comment_limit 不能为负数"))
+		return
+	}
+	if commentLimit > maxCommentLimit {
+		commentLimit = maxCommentLimit
+	}
+
 	beginStr := c.Query("begin")
 	var cursorValue int
 	if beginStr != "" {
@@ -815,29 +887,29 @@ func GetFollowedPosts(c *gin.Context) {
 		return
 	}
 
+	likedPostMap := make(map[uint]bool)
+	if len(posts) > 0 {
+		minID := posts[len(posts)-1].ID
+		maxID := posts[0].ID
+		if likes, err := db.GetLikedIDs(currentUser.ID, minID, maxID); err == nil {
+			for _, postID := range likes {
+				likedPostMap[postID] = true
+			}
+		}
+	}
+
 	postData := make([]map[string]interface{}, len(posts))
 	for i, post := range posts {
-		// 提取tag名称列表
-		tags := make([]string, len(post.Tags))
-		for j, tag := range post.Tags {
-			tags[j] = tag.Name
+		isLike := 0
+		if likedPostMap[post.ID] {
+			isLike = 1
 		}
+		postData[i] = forumPostSummary(post, 1, isLike)
+	}
 
-		postData[i] = map[string]interface{}{
-			"id":         post.ID,
-			"text":       post.ContentHTML,
-			"type":       post.Type,
-			"timestamp":  post.CreatedAt.Unix(),
-			"follownum":  post.Follownum,
-			"likenum":    post.Likenum,
-			"reply":      post.Reply,
-			"tags":       tags,
-			"status":     post.Status,
-			"is_follow":  1,
-			"userid":     post.User.ID,
-			"username":   post.User.Username,
-			"edit_count": post.EditCount,
-		}
+	if err := attachCommentPreviews(postData, posts, currentUser.ID, commentLimit); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
 	}
 
 	attachPolls(postData, posts, currentUser.ID)
@@ -885,17 +957,15 @@ func FollowPost(c *gin.Context) {
 			return
 		}
 
-		// 发送通知给帖子作者
-		// if post.UserID != currentUser.ID {
-		//	notification := &model.Notification{
-		//		UserID:  post.UserID,
-		//		Title:   "您的帖子被关注了",
-		//		Content: fmt.Sprintf("用户 %s 关注了您的帖子", currentUser.Username),
-		//		Type:    "forum_follow",
-		//		Read:    false,
-		//	}
-		//	db.CreateNotification(notification)
-		//}
+		// 发送通知给帖子作者（同一用户只通知一次）
+		notifyOnce(
+			post.UserID,
+			"forum_follow",
+			fmt.Sprintf("用户 %s 关注了您的帖子", currentUser.Username),
+			currentUser.ID,
+			uint(postID),
+			0,
+		)
 
 		utils.RespondSuccess(c, gin.H{"message": "关注成功"})
 	} else {
@@ -960,17 +1030,15 @@ func LikePost(c *gin.Context) {
 		}
 		newLikenum = post.Likenum + 1
 
-		// 发送通知给帖子作者
-		// if post.UserID != currentUser.ID {
-		//	notification := &model.Notification{
-		//		UserID:  post.UserID,
-		//		Title:   "您的帖子被点赞了",
-		//		Content: fmt.Sprintf("用户 %s 点赞了您的帖子", currentUser.Username),
-		//		Type:    "forum_like",
-		//		Read:    false,
-		//	}
-		//	db.CreateNotification(notification)
-		// }
+		// 发送通知给帖子作者（同一用户只通知一次）
+		notifyOnce(
+			post.UserID,
+			"forum_like",
+			fmt.Sprintf("用户 %s 点赞了您的帖子", currentUser.Username),
+			currentUser.ID,
+			uint(postID),
+			0,
+		)
 	} else {
 		// 已点赞，取消点赞
 		err = db.UnlikePost(currentUser.ID, uint(postID))
@@ -1046,16 +1114,15 @@ func LikeComment(c *gin.Context) {
 		}
 		newLikenum = comment.Likenum + 1
 
-		// if comment.UserID != currentUser.ID {
-		// 	notification := &model.Notification{
-		// 		UserID:  comment.UserID,
-		// 		Title:   "您的评论被点赞了",
-		// 		Content: fmt.Sprintf("用户 %s 点赞了您的评论", currentUser.Username),
-		// 		Type:    "comment_like",
-		//		Read:    false,
-		//	}
-		//	db.CreateNotification(notification)
-		// }
+		// 发送通知给评论作者（同一用户只通知一次）
+		notifyOnce(
+			comment.UserID,
+			"comment_like",
+			fmt.Sprintf("用户 %s 点赞了您的评论", currentUser.Username),
+			currentUser.ID,
+			comment.PostID,
+			uint(commentID),
+		)
 	} else {
 		// 已点赞，取消点赞
 		err = db.UnlikeComment(currentUser.ID, uint(commentID))

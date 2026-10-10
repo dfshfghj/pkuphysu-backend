@@ -50,6 +50,18 @@ func GetUserProfile(c *gin.Context) {
 		return
 	}
 
+	commentLimit, err := strconv.Atoi(c.DefaultQuery("comment_limit", strconv.Itoa(defaultCommentLimit)))
+	if err != nil {
+		utils.RespondError(c, 400, "InvalidParam", err)
+		return
+	}
+	if commentLimit < 0 {
+		commentLimit = 0
+	}
+	if commentLimit > maxCommentLimit {
+		commentLimit = maxCommentLimit
+	}
+
 	posts, err := db.GetForumPostsByUserID(target.ID, cursor, limit, viewerID)
 	if err != nil {
 		utils.RespondError(c, 500, "ServerError", err)
@@ -102,6 +114,11 @@ func GetUserProfile(c *gin.Context) {
 			isLike = 1
 		}
 		postData[i] = forumPostSummary(post, isFollow, isLike)
+	}
+
+	if err := attachCommentPreviews(postData, posts, viewerID, commentLimit); err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
 	}
 
 	attachPolls(postData, posts, viewerID)
