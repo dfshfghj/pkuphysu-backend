@@ -164,6 +164,20 @@ func UploadAvatar(c *gin.Context) {
 	})
 }
 
+var avatarSizeBuckets = []int{32, 48, 64, 96, 128, 192, 256}
+
+func avatarBucket(size int) int {
+	if size <= 0 {
+		return 200
+	}
+	for _, bucket := range avatarSizeBuckets {
+		if size <= bucket {
+			return bucket
+		}
+	}
+	return avatarSizeBuckets[len(avatarSizeBuckets)-1]
+}
+
 func GetAvatar(c *gin.Context) {
 	userID := c.Param("id")
 
@@ -172,6 +186,12 @@ func GetAvatar(c *gin.Context) {
 		utils.RespondError(c, 400, "invalid_user_id", errors.New("user ID must be a valid number"))
 		return
 	}
+
+	size := 0
+	if parsed, err := strconv.Atoi(c.Query("size")); err == nil {
+		size = parsed
+	}
+	bucket := avatarBucket(size)
 
 	avatarDir := "./data/avatar"
 	filePath := filepath.Join(avatarDir, userID)
@@ -195,12 +215,27 @@ func GetAvatar(c *gin.Context) {
 
 	defer imgFile.Close()
 
+	stat, err := imgFile.Stat()
+	if err != nil {
+		utils.RespondError(c, 500, "failed_to_stat_avatar", err)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%s-%d-%d-%d"`, userID, bucket, stat.Size(), stat.ModTime().UnixNano())
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", "no-cache")
+
+	if match := c.GetHeader("If-None-Match"); match == "*" || strings.Contains(match, etag) {
+		c.Status(304)
+		return
+	}
+
 	src, _, err := image.Decode(imgFile)
 	if err != nil {
 		utils.RespondError(c, 500, "failed_to_decode_avatar", err)
 		return
 	}
-	resizedImg := resize.Resize(200, 200, src, resize.Lanczos3)
+	resizedImg := resize.Resize(uint(bucket), uint(bucket), src, resize.Lanczos3)
 	c.Header("Content-Type", "image/png")
 	if err := png.Encode(c.Writer, resizedImg); err != nil {
 		utils.RespondError(c, 500, "failed_to_encode_avatar", err)
