@@ -92,6 +92,15 @@ func HasUserSurveyResponse(surveyID, userID uint) (bool, error) {
 	return count > 0, err
 }
 
+// GetSurveyResponseByUser 获取某用户在某问卷下的答卷（含答案）
+func GetSurveyResponseByUser(surveyID, userID uint) (*model.ForumSurveyResponse, error) {
+	var response model.ForumSurveyResponse
+	err := db.Preload("Answers").
+		Where("survey_id = ? AND user_id = ?", surveyID, userID).
+		First(&response).Error
+	return &response, err
+}
+
 // CreateSurveyResponse 记录一次答卷及其答案；问卷不允许重复提交时，已有记录返回 ErrAlreadySurveyed
 func CreateSurveyResponse(survey *model.ForumSurvey, userID uint, answers []model.ForumSurveyAnswer) error {
 	return db.Transaction(func(tx *gorm.DB) error {

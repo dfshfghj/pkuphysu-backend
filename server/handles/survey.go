@@ -1142,6 +1142,16 @@ func GetSurvey(c *gin.Context) {
 	payload := buildSurveyPayload(survey, currentUser.ID, currentUser.IsAdmin(), answered, responseCount)
 	payload["post_id"] = post.ID
 
+	if answered {
+		if response, err := db.GetSurveyResponseByUser(survey.ID, currentUser.ID); err == nil {
+			answers := make(map[string]json.RawMessage, len(response.Answers))
+			for _, answer := range response.Answers {
+				answers[strconv.FormatUint(uint64(answer.BlockID), 10)] = rawJSONOrNull(answer.Value)
+			}
+			payload["my_answers"] = answers
+		}
+	}
+
 	utils.RespondSuccess(c, payload)
 }
 
