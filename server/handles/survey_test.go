@@ -2,6 +2,7 @@ package handles
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"pkuphysu-backend/internal/model"
@@ -324,6 +325,10 @@ func TestBuildSurveyResultsAggregates(t *testing.T) {
 	markdown := blocks[0]
 	if markdown["kind"] != model.SurveyBlockMarkdown || markdown["content"] != "统计页说明" {
 		t.Fatalf("unexpected markdown block: %#v", markdown)
+	}
+	html, _ := markdown["content_html"].(string)
+	if html == "" || !strings.Contains(html, "统计页说明") {
+		t.Fatalf("unexpected markdown content_html: %#v", markdown["content_html"])
 	}
 
 	single := blocks[1]

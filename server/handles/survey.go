@@ -21,18 +21,18 @@ import (
 )
 
 const (
-	minSurveyQuestions       = 1
-	maxSurveyQuestions       = 50
-	maxSurveyBlocks          = 100
-	maxSurveyMarkdownLength  = 10000
-	minSurveyOptions         = 2
-	maxSurveyOptions         = 50
-	maxSurveyOptionLength    = 200
-	defaultSurveyTextLength  = 200
-	maxSurveyTextLength      = 2000
-	maxSurveyScaleSpan       = 10
-	surveySliderBucketCount  = 10
-	surveyResultTextLimit    = 500
+	minSurveyQuestions      = 1
+	maxSurveyQuestions      = 50
+	maxSurveyBlocks         = 100
+	maxSurveyMarkdownLength = 10000
+	minSurveyOptions        = 2
+	maxSurveyOptions        = 50
+	maxSurveyOptionLength   = 200
+	defaultSurveyTextLength = 200
+	maxSurveyTextLength     = 2000
+	maxSurveyScaleSpan      = 10
+	surveySliderBucketCount = 10
+	surveyResultTextLimit   = 500
 )
 
 var surveyQuestionTypes = map[string]bool{
@@ -293,10 +293,11 @@ func normalizeSurveyBlock(input surveyBlockInput, position int) (model.ForumSurv
 			return block, fmt.Errorf("Markdown 内容最多 %d 个字符", maxSurveyMarkdownLength)
 		}
 		return model.ForumSurveyBlock{
-			Kind:     model.SurveyBlockMarkdown,
-			Content:  content,
-			Position: position,
-			Config:   "{}",
+			Kind:        model.SurveyBlockMarkdown,
+			Content:     content,
+			ContentHTML: utils.MarkdownToHtml(content),
+			Position:    position,
+			Config:      "{}",
 		}, nil
 
 	case model.SurveyBlockQuestion:
@@ -633,10 +634,11 @@ func buildSurveyPayload(survey *model.ForumSurvey, viewerID uint, isAdmin bool, 
 			continue
 		}
 		blocks = append(blocks, map[string]interface{}{
-			"id":       block.ID,
-			"kind":     block.Kind,
-			"content":  block.Content,
-			"position": block.Position,
+			"id":           block.ID,
+			"kind":         block.Kind,
+			"content":      block.Content,
+			"content_html": block.ContentHTML,
+			"position":     block.Position,
 		})
 	}
 	payload["blocks"] = blocks
@@ -927,10 +929,11 @@ func buildSurveyResults(survey *model.ForumSurvey, responses []model.ForumSurvey
 			continue
 		}
 		blocks = append(blocks, map[string]interface{}{
-			"id":       block.ID,
-			"kind":     block.Kind,
-			"content":  block.Content,
-			"position": block.Position,
+			"id":           block.ID,
+			"kind":         block.Kind,
+			"content":      block.Content,
+			"content_html": block.ContentHTML,
+			"position":     block.Position,
 		})
 	}
 

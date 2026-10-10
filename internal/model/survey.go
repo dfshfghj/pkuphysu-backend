@@ -30,15 +30,16 @@ type ForumSurvey struct {
 }
 
 type ForumSurveyBlock struct {
-	ID        uint   `gorm:"primaryKey"`
-	SurveyID  uint   `gorm:"index;constraint:OnDelete:CASCADE;"`
-	Kind      string `gorm:"type:varchar(16)"`
-	Content   string `gorm:"type:text"`
-	Type      string `gorm:"type:varchar(24)"`
-	Required  bool
-	Position  int
-	Config    string `gorm:"type:jsonb"`
-	CreatedAt time.Time
+	ID          uint   `gorm:"primaryKey"`
+	SurveyID    uint   `gorm:"index;constraint:OnDelete:CASCADE;"`
+	Kind        string `gorm:"type:varchar(16)"`
+	Content     string `gorm:"type:text"`
+	ContentHTML string `gorm:"type:text"`
+	Type        string `gorm:"type:varchar(24)"`
+	Required    bool
+	Position    int
+	Config      string `gorm:"type:jsonb"`
+	CreatedAt   time.Time
 }
 
 type ForumSurveyResponse struct {
