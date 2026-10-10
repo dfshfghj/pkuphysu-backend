@@ -3,6 +3,7 @@ package handles
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,36 +44,106 @@ func editedAtUnix(editedAt *time.Time) interface{} {
 	return editedAt.Unix()
 }
 
-// 评论不经过审核直接可见时，补齐审核流程里的副作用（帖子回复数、通知楼主）
+var mentionLinkPattern = regexp.MustCompile(`\[@[^\]\n]*\]\(/u/(\d+)\)`)
+
+func parseMentionUserIDs(content string) []uint {
+	matches := mentionLinkPattern.FindAllStringSubmatch(content, -1)
+	ids := make([]uint, 0, len(matches))
+	seen := make(map[uint]bool, len(matches))
+
+	for _, match := range matches {
+		value, err := strconv.ParseUint(match[1], 10, 32)
+		if err != nil || value == 0 || seen[uint(value)] {
+			continue
+		}
+		seen[uint(value)] = true
+		ids = append(ids, uint(value))
+	}
+
+	return ids
+}
+
+func notifyMentions(content string, authorID uint, postID uint, commentID uint, title string, message string, extraIDs ...uint) {
+	ids := append(parseMentionUserIDs(content), extraIDs...)
+	if len(ids) == 0 {
+		return
+	}
+
+	seen := make(map[uint]bool, len(ids))
+	unique := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id == 0 || id == authorID || seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return
+	}
+
+	existing, err := db.GetExistingUserIDs(unique)
+	if err != nil {
+		logrus.WithError(err).Warn("failed to filter mentioned users")
+		return
+	}
+
+	for _, userID := range existing {
+		if err := db.CreateNotification(&model.Notification{
+			UserID:           userID,
+			Title:            title,
+			Content:          message,
+			Type:             "forum_mention",
+			Read:             false,
+			RelatedUserID:    authorID,
+			RelatedPostID:    postID,
+			RelatedCommentID: commentID,
+		}); err != nil {
+			logrus.WithError(err).Warn("failed to create mention notification")
+		}
+	}
+}
+
+func notifyCommentMentions(comment *model.ForumComment) {
+	var extraIDs []uint
+	if comment.QuoteID != nil {
+		if quoted, err := db.GetForumCommentByID(*comment.QuoteID); err == nil && quoted != nil {
+			extraIDs = append(extraIDs, quoted.UserID)
+		}
+	}
+	notifyMentions(comment.Content, comment.UserID, comment.PostID, comment.ID, "mention_comment", "在评论中提到了您", extraIDs...)
+}
+
+func publishPostEffects(post *model.ForumPost) {
+	notifyMentions(post.Content, post.UserID, post.ID, 0, "mention_post", "在帖子中提到了您")
+}
+
 func publishCommentEffects(comment *model.ForumComment) {
 	approvedCount, err := db.CountApprovedComments(comment.PostID)
 	if err != nil {
 		logrus.WithError(err).Warn("failed to count approved comments")
-		return
-	}
-	if err := db.UpdateForumPostReplyNum(comment.PostID, int(approvedCount)); err != nil {
+	} else if err := db.UpdateForumPostReplyNum(comment.PostID, int(approvedCount)); err != nil {
 		logrus.WithError(err).Warn("failed to update post reply num")
 	}
 
 	post, err := db.GetForumPostByID(int(comment.PostID))
 	if err != nil {
 		logrus.WithError(err).Warn("failed to load post for comment notification")
-		return
+	} else if post.UserID != comment.UserID {
+		if err := db.CreateNotification(&model.Notification{
+			UserID:        post.UserID,
+			Title:         "new_comment",
+			Content:       "您的帖子收到了新评论",
+			Type:          "forum_comment",
+			Read:          false,
+			RelatedUserID: comment.UserID,
+			RelatedPostID: post.ID,
+		}); err != nil {
+			logrus.WithError(err).Warn("failed to create comment notification")
+		}
 	}
-	if post.UserID == comment.UserID {
-		return
-	}
-	if err := db.CreateNotification(&model.Notification{
-		UserID:        post.UserID,
-		Title:         "new_comment",
-		Content:       "您的帖子收到了新评论",
-		Type:          "forum_comment",
-		Read:          false,
-		RelatedUserID: comment.UserID,
-		RelatedPostID: post.ID,
-	}); err != nil {
-		logrus.WithError(err).Warn("failed to create comment notification")
-	}
+
+	notifyCommentMentions(comment)
 }
 
 func canViewForumContent(status string, ownerID uint, viewerID uint) bool {
@@ -89,6 +160,7 @@ func quotePayloadForViewer(comment *model.ForumComment, viewerID uint) gin.H {
 
 	return gin.H{
 		"cid":      comment.Quote.ID,
+		"userid":   comment.Quote.UserID,
 		"username": comment.Quote.User.Username,
 		"text":     comment.Quote.ContentHTML,
 		"status":   comment.Quote.Status,
@@ -509,6 +581,8 @@ func SubmitPost(c *gin.Context) {
 	if post.Status == model.ForumContentStatusPending {
 		moderation.EnqueuePost(post.ID)
 		message = "帖子发布成功，等待审核"
+	} else {
+		publishPostEffects(&post)
 	}
 
 	utils.RespondSuccess(c, gin.H{
@@ -1021,6 +1095,12 @@ func ReviewPostByID(c *gin.Context) {
 		return
 	}
 
+	if req.Status == model.ForumContentStatusApproved {
+		if post, err := db.GetForumPostByID(int(postID)); err == nil {
+			publishPostEffects(post)
+		}
+	}
+
 	if req.Status == model.ForumContentStatusRejected {
 		if post, err := db.GetForumPostByID(int(postID)); err == nil {
 			db.CreateNotification(&model.Notification{
@@ -1072,33 +1152,8 @@ func ReviewCommentByID(c *gin.Context) {
 		return
 	}
 
-	approvedCount, err := db.CountApprovedComments(comment.PostID)
-	if err != nil {
-		utils.RespondError(c, 500, "ServerError", err)
-		return
-	}
-	if err := db.UpdateForumPostReplyNum(comment.PostID, int(approvedCount)); err != nil {
-		utils.RespondError(c, 500, "ServerError", err)
-		return
-	}
-
 	if req.Status == model.ForumContentStatusApproved {
-		post, err := db.GetForumPostByID(int(comment.PostID))
-		if err != nil {
-			utils.RespondError(c, 500, "ServerError", err)
-			return
-		}
-		if post.UserID != comment.UserID {
-			db.CreateNotification(&model.Notification{
-				UserID:        post.UserID,
-				Title:         "new_comment",
-				Content:       "您的帖子收到了新评论",
-				Type:          "forum_comment",
-				Read:          false,
-				RelatedUserID: comment.UserID,
-				RelatedPostID: post.ID,
-			})
-		}
+		publishCommentEffects(comment)
 	}
 
 	if req.Status == model.ForumContentStatusRejected {

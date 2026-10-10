@@ -78,4 +78,7 @@ func TestQuotePayloadForViewer(t *testing.T) {
 	if payload["status"] != model.ForumContentStatusManualReview {
 		t.Fatalf("unexpected quote status: %#v", payload["status"])
 	}
+	if payload["userid"] != uint(1) {
+		t.Fatalf("unexpected quote userid: %#v", payload["userid"])
+	}
 }

@@ -46,7 +46,7 @@ func TestLatestCommentPayloadsQuote(t *testing.T) {
 		if !ok || quote == nil {
 			t.Fatal("expected quote payload")
 		}
-		if quote["cid"] != quoteID || quote["username"] != "Alice" {
+		if quote["cid"] != quoteID || quote["userid"] != uint(7) || quote["username"] != "Alice" {
 			t.Fatalf("unexpected quote payload: %v", quote)
 		}
 		if items[0]["is_like"] != 1 {

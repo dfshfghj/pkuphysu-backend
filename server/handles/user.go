@@ -10,6 +10,7 @@ import (
 	"pkuphysu-backend/internal/model"
 	"pkuphysu-backend/internal/utils"
 	"strconv"
+	"strings"
 
 	"image/color"
 	_ "image/jpeg"
@@ -218,6 +219,40 @@ func ListUsers(c *gin.Context) {
 		"users": users,
 		"count": len(users),
 	})
+}
+
+const (
+	defaultUserSearchLimit = 8
+	maxUserSearchLimit     = 20
+)
+
+func SearchUsers(c *gin.Context) {
+	keyword := strings.TrimSpace(c.Query("q"))
+
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(defaultUserSearchLimit)))
+	if err != nil || limit <= 0 {
+		limit = defaultUserSearchLimit
+	}
+	if limit > maxUserSearchLimit {
+		limit = maxUserSearchLimit
+	}
+
+	users, err := db.SearchUsersByUsername(keyword, limit)
+	if err != nil {
+		utils.RespondError(c, 500, "ServerError", err)
+		return
+	}
+
+	result := make([]map[string]interface{}, len(users))
+	for i, user := range users {
+		result[i] = map[string]interface{}{
+			"id":       user.ID,
+			"username": user.Username,
+			"verified": user.Verified,
+		}
+	}
+
+	utils.RespondSuccess(c, result)
 }
 
 func ListAdmins(c *gin.Context) {
